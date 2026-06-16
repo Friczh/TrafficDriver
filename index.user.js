@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Layma Assistant 🤖
 // @namespace    http://tampermonkey.net/
-// @version      v0.5.0
-// @description  Automates monetized traffic links
-// @author       Friczh
+// @version      1.7.0
+// @description  Automates Layma.net task flow - respects creators, just removes friction
+// @author       Your Bro Claude
 // @match        https://layma.net/*
 // @match        http://layma.net/*
 // @match        https://*/*
@@ -32,7 +32,6 @@
 
     const isLaymaPage = () => window.location.hostname.includes(LAYMA_DOMAIN);
 
-    // Known WordPress/theme IDs to exclude from traffic_key detection
     const KNOWN_PAGE_IDS = new Set([
         'wrapper','header','top-bar','masthead','logo','main','content',
         'footer','sidebar','main-menu','wide-nav','top-link','readMoreBtn',
@@ -40,10 +39,8 @@
     ]);
 
     /**
-     * Find the Layma injected container div
-     * The traffic_key becomes the div ID e.g. #HOsQs8ehN
-     * It's a short random alphanumeric string that doesn't match
-     * any known WordPress/theme element ID
+     * Find the Layma injected container div by its traffic_key ID
+     * e.g. #HOsQs8ehN — short random alphanumeric string
      */
     const findLaymaContainer = () => {
         const allDivs = document.querySelectorAll('div[id]');
@@ -52,19 +49,17 @@
             if (
                 /^[A-Za-z0-9]{6,14}$/.test(id) &&
                 !KNOWN_PAGE_IDS.has(id) &&
-                !id.startsWith('custom_') &&
-                !id.startsWith('custom-') &&
+                !id.startsWith('custom') &&
                 !id.startsWith('menu-') &&
                 !id.startsWith('text-') &&
                 !id.startsWith('attachment') &&
                 !id.startsWith('caption') &&
+                !id.startsWith('wp-') &&
+                !id.startsWith('flatsome') &&
+                !id.startsWith('jquery') &&
                 !id.includes('css') &&
-                !id.includes('js') &&
-                !id.includes('flatsome') &&
-                !id.includes('jquery') &&
-                !id.includes('wp-')
+                !id.includes('-js')
             ) {
-                log('Found Layma container: #' + id);
                 return div;
             }
         }
@@ -72,8 +67,21 @@
     };
 
     const isExternalTaskPage = () => {
-        return !isLaymaPage() &&
-            !!document.querySelector('script[src*="layma.net/Traffic/Index"]');
+        if (isLaymaPage()) return false;
+
+        // Signal 1: traffic_key container div exists e.g. #HOsQs8ehN
+        if (findLaymaContainer()) return true;
+
+        // Signal 2: floating green "Lấy mã" button exists
+        for (const el of document.querySelectorAll('*')) {
+            const t = el.textContent.trim();
+            if (
+                (t === 'LẤY MÃ' || t.startsWith('Lấy mã sau') || t.startsWith('Lấy mã')) &&
+                el.children.length < 3
+            ) return true;
+        }
+
+        return false;
     };
 
     const log = (msg) => console.log(`[Layma Assistant] ${msg}`);
@@ -537,9 +545,4 @@
                 targetTouches: [],
                 changedTouches: [touchObj],
             }));
-        } catch(e) {
-            // TouchEvent not supported (desktop) — fall back to mouse click
-        }
-
-        // Also fire mouse events (desktop fallback + extra coverage)
-      
+        } catch(e) 
