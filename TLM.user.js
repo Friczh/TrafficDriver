@@ -277,12 +277,22 @@
                 // Save code for dashboard
                 GM_setValue('tpm_code', code);
 
-                // Copy to clipboard too
-                try { GM_setClipboard(code); } catch(e) {
-                    navigator.clipboard.writeText(code).catch(() => {});
+                // Copy to clipboard — GM_setClipboard bypasses browser user-gesture
+                // restrictions that block navigator.clipboard on mobile
+                let clipboardOk = false;
+                try {
+                    GM_setClipboard(code, 'text');
+                    clipboardOk = true;
+                    log('📋 GM_setClipboard succeeded');
+                } catch (e) {
+                    log(`⚠️ GM_setClipboard failed: ${e.message}`);
                 }
 
-                showToast(`✅ Mã: ${code}\n(đã copy + lưu cho dashboard!)`, '#16a34a', 6000);
+                if (clipboardOk) {
+                    showToast(`✅ Mã: ${code}\n(đã copy vào clipboard!)`, '#16a34a', 6000);
+                } else {
+                    showToast(`✅ Mã: ${code}\n⚠️ Copy thủ công (auto-copy lỗi)`, '#ea580c', 8000);
+                }
                 log('💾 Code saved. Go back to taplayma.com dashboard — it will auto-paste!');
             } else {
                 log('🔎 Waiting for code...');
