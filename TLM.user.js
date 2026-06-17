@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         TapLayMa - UI Helper v5 (Final)
+// @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      0.5
+// @version      0.6
 // @description  Full automation: balloon → confirm1 → timer → confirm2 → code → auto-paste dashboard
 // @author       You
 // @match        *://*/*
