@@ -113,18 +113,27 @@
             return true;
         }
 
-        // Poll until input is ready then paste
-        let dashAttempts = 0;
+        // Poll until input is ready AND a code is available, then paste.
+        // Runs indefinitely (no timeout) since the user may switch tabs
+        // back and forth before the code is ready — no refresh needed.
         const dashPoll = setInterval(() => {
-            dashAttempts++;
-            if (dashAttempts > 20) {
-                clearInterval(dashPoll);
-                log('Dashboard paste timeout.');
-                return;
+            tryPasteCode();
+        }, 1000);
+
+        // Re-check immediately whenever this tab becomes visible again
+        // (covers the case where code was saved while this tab was in background)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                log('👀 Tab became visible — checking for new code...');
+                tryPasteCode();
             }
-            const done = tryPasteCode();
-            if (done) clearInterval(dashPoll);
-        }, 600);
+        });
+
+        // Also check on window focus (extra safety net for some mobile browsers)
+        window.addEventListener('focus', () => {
+            log('🎯 Window focused — checking for new code...');
+            tryPasteCode();
+        });
 
         return; // Stop here for dashboard
     }
