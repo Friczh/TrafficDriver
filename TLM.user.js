@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      0.6
+// @version      0.7
 // @description  Full automation: balloon → confirm1 → timer → confirm2 → code → auto-paste dashboard
 // @author       You
 // @match        *://*/*
@@ -189,8 +189,18 @@
         return null;
     }
 
+    // Check if widget is currently in a loading state (brief flash after confirm2 click)
+    function isWidgetLoading() {
+        const div = findWidgetDiv();
+        if (!div) return false;
+        return div.getAttribute('data-loading') === 'true';
+    }
+
     // Code = short alphanumeric string inside or near widget div
+    // Only valid once data-loading has settled back to "false"
     function findCode() {
+        if (isWidgetLoading()) return null; // still loading, don't read yet
+
         const div = findWidgetDiv();
         if (!div) return null;
 
@@ -276,6 +286,11 @@
         if (state === 'FINDING_CODE') {
             // Small grace period for DOM to update after click
             if ((elapsed - lastConfirmClickTime) < 1200) return;
+
+            if (isWidgetLoading()) {
+                log('⏳ Widget still loading code...');
+                return;
+            }
 
             const code = findCode();
             if (code) {
