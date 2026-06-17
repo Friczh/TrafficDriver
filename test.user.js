@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         TapLayMa - UI Helper v8
+// @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      0.8
-// @description  Full automation: balloon → confirm1 → timer → confirm2 → code → auto-paste dashboard
-// @author       You
+// @version      0.9
+// @description  Semi-auto human-interaction
+// @author       Friczh
 // @match        *://*/*
 // @grant        GM_setClipboard
 // @grant        GM_setValue
@@ -37,185 +37,365 @@
         }, CLICK_DELAY_MS);
     }
 
-    function showToast(msg, color = '#222', duration) {
+    function showToast(msg, color = '#d4d4d4') {
         ensureTerminal();
         addLogLine(msg, color);
     }
 
-    // ─── macOS TERMINAL.APP STYLE WINDOW ────────────────────────────────────
-    // States: 'normal' (full window open) | 'minimized' (taskbar pill only) | 'closed'
+    // ─── macOS Terminal — State ───────────────────────────────────────────────
     let winState = 'closed';
-    let termEl = null;
-    let pillEl = null;
+    let termEl   = null;
+    let pillEl   = null;
+
+    // ─── Drag state ──────────────────────────────────────────────────────────
+    let isDragging = false, dragOffX = 0, dragOffY = 0;
+
+    function getTimestamp() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    }
 
     function injectTerminalStyles() {
         if (document.getElementById('tpm-term-style')) return;
         const style = document.createElement('style');
         style.id = 'tpm-term-style';
         style.textContent = `
+            /* ── Window ── */
             #tpm-term {
                 position: fixed;
-                bottom: 20px;
-                right: 20px;
-                width: 340px;
-                height: 280px;
-                background: rgba(30, 30, 30, 0.97);
-                border-radius: 10px;
-                box-shadow: 0 12px 40px rgba(0,0,0,0.55);
-                font-family: -apple-system, "SF Mono", Menlo, Consolas, monospace;
-                z-index: 999999;
+                bottom: 24px;
+                right: 24px;
+                width: 380px;
+                height: 300px;
+                min-width: 260px;
+                min-height: 160px;
+                background: #1e1e1e;
+                border-radius: 12px;
+                box-shadow:
+                    0 0 0 0.5px rgba(255,255,255,0.08),
+                    0 2px 4px rgba(0,0,0,0.4),
+                    0 12px 48px rgba(0,0,0,0.7);
+                font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+                font-size: 12px;
+                z-index: 2147483647;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
-                border: 1px solid rgba(255,255,255,0.08);
+                resize: both;
             }
-            #tpm-term-titlebar {
-                background: linear-gradient(#3a3a3a, #2b2b2b);
-                padding: 8px 10px;
+
+            /* ── Title bar ── */
+            #tpm-titlebar {
+                background: linear-gradient(180deg, #323232 0%, #2a2a2a 100%);
+                border-bottom: 1px solid #111;
+                padding: 0 12px;
+                height: 38px;
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                border-bottom: 1px solid rgba(0,0,0,0.4);
                 flex-shrink: 0;
+                cursor: default;
                 -webkit-user-select: none;
                 user-select: none;
             }
-            .tpm-traffic {
-                width: 12px;
-                height: 12px;
+
+            /* ── Traffic lights ── */
+            .tpm-tl-group {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-shrink: 0;
+            }
+            .tpm-tl {
+                width: 13px;
+                height: 13px;
                 border-radius: 50%;
-                display: inline-block;
                 cursor: pointer;
                 position: relative;
-                border: 0.5px solid rgba(0,0,0,0.15);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: filter 0.1s;
             }
-            .tpm-traffic.disabled {
+            .tpm-tl.disabled {
                 cursor: default;
-                opacity: 0.45;
+                opacity: 0.35;
             }
-            .tpm-red    { background: #ff5f56; }
-            .tpm-yellow { background: #ffbd2e; }
-            .tpm-green  { background: #27c93f; }
-            #tpm-term-title {
+            .tpm-tl-red    { background: #ff5f56; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.2), 0 0.5px 0 rgba(0,0,0,0.3); }
+            .tpm-tl-yellow { background: #ffbd2e; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.2), 0 0.5px 0 rgba(0,0,0,0.3); }
+            .tpm-tl-green  { background: #28c840; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.2), 0 0.5px 0 rgba(0,0,0,0.3); }
+
+            /* Glyph on hover — macOS authentic */
+            .tpm-tl-glyph {
+                opacity: 0;
+                font-size: 9px;
+                font-weight: 700;
+                line-height: 1;
+                color: rgba(0,0,0,0.55);
+                pointer-events: none;
+                transition: opacity 0.1s;
+                font-family: -apple-system, sans-serif;
+            }
+            .tpm-tl-group:hover .tpm-tl-glyph { opacity: 1; }
+            .tpm-tl.disabled .tpm-tl-glyph { opacity: 0 !important; }
+
+            /* ── Window title ── */
+            #tpm-title {
                 flex: 1;
                 text-align: center;
-                color: #c7c7c7;
-                font-size: 12.5px;
-                font-weight: 600;
-                margin-right: 52px;
-                pointer-events: none;
-            }
-            #tpm-term-body {
-                padding: 10px 12px;
-                overflow-y: auto;
-                flex: 1;
+                color: #9a9a9a;
                 font-size: 12px;
-                line-height: 1.55;
-                color: #d4d4d4;
-                background: rgba(0,0,0,0.15);
-            }
-            #tpm-term-body::-webkit-scrollbar { width: 6px; }
-            #tpm-term-body::-webkit-scrollbar-thumb { background: #4a4a4a; border-radius: 3px; }
-            .tpm-log-line {
-                margin-bottom: 4px;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }
-            .tpm-log-line::before {
-                content: "$ ";
-                color: #6b6b6b;
+                font-weight: 500;
+                font-family: -apple-system, system-ui, sans-serif;
+                letter-spacing: 0.01em;
+                pointer-events: none;
+                /* offset to visually center against the traffic light cluster */
+                margin-right: 53px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
-            /* Minimized floating taskbar bar — top, centered, almost full width */
+            /* ── Tab bar (single tab style) ── */
+            #tpm-tabbar {
+                background: #252525;
+                border-bottom: 1px solid #111;
+                display: flex;
+                align-items: center;
+                padding: 0 12px;
+                height: 30px;
+                gap: 4px;
+                flex-shrink: 0;
+            }
+            .tpm-tab {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                background: #1e1e1e;
+                border: 1px solid #3a3a3a;
+                border-bottom: 1px solid #1e1e1e;
+                border-radius: 6px 6px 0 0;
+                padding: 0 10px;
+                height: 26px;
+                color: #ccc;
+                font-size: 11px;
+                font-family: -apple-system, system-ui, sans-serif;
+            }
+            .tpm-tab-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #28c840;
+                flex-shrink: 0;
+            }
+            .tpm-tab-dot.idle { background: #6a6a6a; }
+            .tpm-tab-dot.busy { background: #ffbd2e; animation: tpm-pulse 1.2s ease-in-out infinite; }
+            .tpm-tab-dot.done { background: #28c840; }
+            .tpm-tab-dot.error { background: #ff5f56; }
+
+            @keyframes tpm-pulse {
+                0%, 100% { opacity: 1; }
+                50%       { opacity: 0.35; }
+            }
+
+            /* ── Log body ── */
+            #tpm-body {
+                flex: 1;
+                overflow-y: auto;
+                padding: 10px 14px 12px;
+                background: #1e1e1e;
+                line-height: 1.65;
+            }
+            #tpm-body::-webkit-scrollbar        { width: 5px; }
+            #tpm-body::-webkit-scrollbar-track  { background: transparent; }
+            #tpm-body::-webkit-scrollbar-thumb  { background: #3a3a3a; border-radius: 4px; }
+            #tpm-body::-webkit-scrollbar-thumb:hover { background: #505050; }
+
+            /* ── Log lines ── */
+            .tpm-line {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 2px;
+                white-space: pre-wrap;
+                word-break: break-word;
+                align-items: baseline;
+            }
+            .tpm-line-ts {
+                color: #4a4a4a;
+                font-size: 10px;
+                flex-shrink: 0;
+                padding-top: 1px;
+                user-select: none;
+            }
+            .tpm-line-prompt {
+                color: #3d3d3d;
+                flex-shrink: 0;
+                user-select: none;
+            }
+            .tpm-line-msg {
+                flex: 1;
+            }
+
+            /* ── Status bar ── */
+            #tpm-statusbar {
+                background: #252525;
+                border-top: 1px solid #111;
+                height: 22px;
+                display: flex;
+                align-items: center;
+                padding: 0 12px;
+                gap: 10px;
+                flex-shrink: 0;
+                color: #555;
+                font-size: 10px;
+                font-family: -apple-system, system-ui, sans-serif;
+                user-select: none;
+            }
+            #tpm-statusbar .tpm-sb-item { display: flex; align-items: center; gap: 4px; }
+            #tpm-sb-phase { color: #7a7a7a; margin-left: auto; }
+
+            /* ── Minimized pill ── */
             #tpm-pill {
                 position: fixed;
-                top: 14px;
-                left: 50%;
-                transform: translateX(-50%);
-                width: calc(100% - 32px);
-                max-width: 480px;
-                height: 36px;
-                padding: 0 14px;
-                border-radius: 10px;
-                background: rgba(40,40,40,0.95);
-                border: 1px solid rgba(255,255,255,0.1);
-                box-shadow: 0 6px 18px rgba(0,0,0,0.45);
-                z-index: 999999;
+                top: 16px;
+                right: 16px;
+                height: 32px;
+                padding: 0 14px 0 10px;
+                border-radius: 16px;
+                background: #2a2a2a;
+                border: 0.5px solid rgba(255,255,255,0.1);
+                box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+                z-index: 2147483647;
                 display: none;
                 align-items: center;
                 gap: 8px;
-                font-family: -apple-system, sans-serif;
-                box-sizing: border-box;
+                font-family: -apple-system, system-ui, sans-serif;
+                cursor: default;
             }
-            #tpm-pill .tpm-traffic { width: 11px; height: 11px; }
+            .tpm-pill-tl-group { display: flex; gap: 6px; align-items: center; }
+            .tpm-pill-tl-group:hover .tpm-tl-glyph { opacity: 1; }
+
             #tpm-pill-label {
-                flex: 1;
-                text-align: center;
-                color: #ccc;
+                color: #aaa;
                 font-size: 12px;
-                font-weight: 600;
-                margin-right: 38px;
+                font-weight: 500;
                 pointer-events: none;
+            }
+            #tpm-pill-dot {
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: #28c840;
+                margin-left: 2px;
             }
         `;
         document.head.appendChild(style);
     }
 
     function buildTerminal() {
+        // ── Main window ──
         termEl = document.createElement('div');
         termEl.id = 'tpm-term';
         termEl.innerHTML = `
-            <div id="tpm-term-titlebar">
-                <span class="tpm-traffic tpm-red" id="tpm-btn-close" title="Close"></span>
-                <span class="tpm-traffic tpm-yellow" id="tpm-btn-min" title="Minimize"></span>
-                <span class="tpm-traffic tpm-green disabled" id="tpm-btn-max" title="Maximize"></span>
-                <span id="tpm-term-title">taplayma-helper — bash</span>
+            <div id="tpm-titlebar">
+                <div class="tpm-tl-group">
+                    <div class="tpm-tl tpm-tl-red" id="tpm-btn-close" title="Close">
+                        <span class="tpm-tl-glyph">✕</span>
+                    </div>
+                    <div class="tpm-tl tpm-tl-yellow" id="tpm-btn-min" title="Minimize">
+                        <span class="tpm-tl-glyph">−</span>
+                    </div>
+                    <div class="tpm-tl tpm-tl-green disabled" id="tpm-btn-max" title="Maximize">
+                        <span class="tpm-tl-glyph">+</span>
+                    </div>
+                </div>
+                <span id="tpm-title">taplayma-helper — bash</span>
             </div>
-            <div id="tpm-term-body"></div>
+            <div id="tpm-tabbar">
+                <div class="tpm-tab">
+                    <div class="tpm-tab-dot idle" id="tpm-tab-dot"></div>
+                    <span id="tpm-tab-label">bash</span>
+                </div>
+            </div>
+            <div id="tpm-body"></div>
+            <div id="tpm-statusbar">
+                <span class="tpm-sb-item">taplayma.com</span>
+                <span id="tpm-sb-phase">idle</span>
+            </div>
         `;
         document.body.appendChild(termEl);
 
+        // ── Pill (minimized) ──
         pillEl = document.createElement('div');
         pillEl.id = 'tpm-pill';
         pillEl.innerHTML = `
-            <span class="tpm-traffic tpm-red" id="tpm-pill-close" title="Close"></span>
-            <span class="tpm-traffic tpm-yellow disabled" id="tpm-pill-min" title="Minimize"></span>
-            <span class="tpm-traffic tpm-green" id="tpm-pill-max" title="Maximize"></span>
+            <div class="tpm-pill-tl-group">
+                <div class="tpm-tl tpm-tl-red" id="tpm-pill-close" title="Close">
+                    <span class="tpm-tl-glyph">✕</span>
+                </div>
+                <div class="tpm-tl tpm-tl-yellow disabled" id="tpm-pill-min" title="Minimize">
+                    <span class="tpm-tl-glyph">−</span>
+                </div>
+                <div class="tpm-tl tpm-tl-green" id="tpm-pill-max" title="Restore">
+                    <span class="tpm-tl-glyph">+</span>
+                </div>
+            </div>
             <span id="tpm-pill-label">TapLayMa</span>
+            <div id="tpm-pill-dot"></div>
         `;
         document.body.appendChild(pillEl);
 
-        // ── Normal window buttons ──
-        // Close: works in normal state
-        termEl.querySelector('#tpm-btn-close').addEventListener('click', () => doClose());
-        // Minimize: only works when in normal state (it always is, when this btn is visible/active)
-        termEl.querySelector('#tpm-btn-min').addEventListener('click', () => doMinimize());
-        // Maximize: disabled while already normal — no-op
+        // ── Traffic light events ──
+        termEl.querySelector('#tpm-btn-close').addEventListener('click', doClose);
+        termEl.querySelector('#tpm-btn-min').addEventListener('click', doMinimize);
+        pillEl.querySelector('#tpm-pill-close').addEventListener('click', doClose);
+        pillEl.querySelector('#tpm-pill-max').addEventListener('click', doMaximize);
 
-        // ── Pill (minimized) buttons ──
-        pillEl.querySelector('#tpm-pill-close').addEventListener('click', () => doClose());
-        // Maximize: only works when minimized (it always is, when pill is visible)
-        pillEl.querySelector('#tpm-pill-max').addEventListener('click', () => doMaximize());
-        // Minimize: disabled while already minimized — no-op
+        // ── Drag ──
+        const titlebar = termEl.querySelector('#tpm-titlebar');
+        titlebar.addEventListener('mousedown', e => {
+            if (e.target.classList.contains('tpm-tl')) return;
+            isDragging = true;
+            const rect = termEl.getBoundingClientRect();
+            dragOffX = e.clientX - rect.left;
+            dragOffY = e.clientY - rect.top;
+            termEl.style.transition = 'none';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            const x = e.clientX - dragOffX;
+            const y = e.clientY - dragOffY;
+            // Clamp to viewport
+            const maxX = window.innerWidth  - termEl.offsetWidth;
+            const maxY = window.innerHeight - termEl.offsetHeight;
+            termEl.style.left   = Math.max(0, Math.min(x, maxX)) + 'px';
+            termEl.style.top    = Math.max(0, Math.min(y, maxY)) + 'px';
+            termEl.style.right  = 'auto';
+            termEl.style.bottom = 'auto';
+        });
+        document.addEventListener('mouseup', () => { isDragging = false; });
     }
 
     function doClose() {
         if (termEl) termEl.remove();
         if (pillEl) pillEl.remove();
-        termEl = null;
-        pillEl = null;
+        termEl = null; pillEl = null;
         winState = 'closed';
     }
 
     function doMinimize() {
-        if (winState !== 'normal') return; // guard: can't minimize unless currently open
+        if (winState !== 'normal') return;
         termEl.style.display = 'none';
         pillEl.style.display = 'flex';
         winState = 'minimized';
     }
 
     function doMaximize() {
-        if (winState !== 'minimized') return; // guard: can't maximize unless currently minimized
+        if (winState !== 'minimized') return;
         pillEl.style.display = 'none';
         termEl.style.display = 'flex';
         winState = 'normal';
@@ -227,16 +407,28 @@
             buildTerminal();
             winState = 'normal';
         }
-        // If minimized, leave it minimized — new logs still get added to body underneath
+    }
+
+    function setPhase(label, dotState = 'idle') {
+        if (!termEl) return;
+        const dot   = termEl.querySelector('#tpm-tab-dot');
+        const phase = termEl.querySelector('#tpm-sb-phase');
+        const tab   = termEl.querySelector('#tpm-tab-label');
+        if (dot)   { dot.className = 'tpm-tab-dot ' + dotState; }
+        if (phase) { phase.textContent = label; }
+        if (tab)   { tab.textContent = label; }
     }
 
     function addLogLine(msg, color = '#d4d4d4') {
         if (!termEl) return;
-        const body = termEl.querySelector('#tpm-term-body');
+        const body = termEl.querySelector('#tpm-body');
         const line = document.createElement('div');
-        line.className = 'tpm-log-line';
-        line.style.color = color;
-        line.textContent = msg;
+        line.className = 'tpm-line';
+        line.innerHTML = `
+            <span class="tpm-line-ts">${getTimestamp()}</span>
+            <span class="tpm-line-prompt">$</span>
+            <span class="tpm-line-msg" style="color:${color}">${msg}</span>
+        `;
         body.appendChild(line);
         body.scrollTop = body.scrollHeight;
     }
@@ -254,7 +446,7 @@
                 return;
             }
 
-            const input = document.querySelector('input[name="code"]');
+            const input     = document.querySelector('input[name="code"]');
             const submitBtn = document.querySelector('button[type="submit"]');
 
             if (!input || !submitBtn) {
@@ -262,21 +454,17 @@
                 return false;
             }
 
-            // Vue.js requires native input setter to trigger reactivity
             const nativeInputSetter = Object.getOwnPropertyDescriptor(
                 window.HTMLInputElement.prototype, 'value'
             ).set;
             nativeInputSetter.call(input, savedCode);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('input',  { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
 
             log(`✅ Pasted code: ${savedCode}`);
-            showToast(`✅ Đã nhập mã: ${savedCode}\nĐang xác nhận...`, '#16a34a', 4000);
-
-            // Clear saved code
+            showToast(`✅ Đã nhập mã: ${savedCode}\nĐang xác nhận...`, '#28c840');
             GM_setValue('tpm_code', '');
 
-            // Click submit after short delay
             setTimeout(() => {
                 submitBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
                 submitBtn.click();
@@ -286,15 +474,8 @@
             return true;
         }
 
-        // Poll until input is ready AND a code is available, then paste.
-        // Runs indefinitely (no timeout) since the user may switch tabs
-        // back and forth before the code is ready — no refresh needed.
-        const dashPoll = setInterval(() => {
-            tryPasteCode();
-        }, 1000);
+        setInterval(() => tryPasteCode(), 1000);
 
-        // Re-check immediately whenever this tab becomes visible again
-        // (covers the case where code was saved while this tab was in background)
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 log('👀 Tab became visible — checking for new code...');
@@ -302,24 +483,21 @@
             }
         });
 
-        // Also check on window focus (extra safety net for some mobile browsers)
         window.addEventListener('focus', () => {
             log('🎯 Window focused — checking for new code...');
             tryPasteCode();
         });
 
-        return; // Stop here for dashboard
+        return;
     }
 
     // =========================================================================
     // EXTERNAL SITE — find widget, run full flow
     // =========================================================================
-    if (!IS_EXTERNAL) return; // Only run on non-taplayma domains
+    if (!IS_EXTERNAL) return;
 
-    // Check if this page even has the taplayma widget script
     function hasWidget() {
-        const scripts = document.querySelectorAll('script[src]');
-        for (const s of scripts) {
+        for (const s of document.querySelectorAll('script[src]')) {
             if (s.src && s.src.includes('taplayma.com')) return true;
         }
         return false;
@@ -332,7 +510,6 @@
 
     log('🎯 Taplayma widget detected on external site');
 
-    // States: SEARCHING_BALLOON → CLICKING_CONFIRM1 → WAITING_TIMER → CLICKING_CONFIRM2 → FINDING_CODE → DONE
     let state = 'SEARCHING_BALLOON';
     let elapsed = 0;
     let lastConfirmClickTime = 0;
@@ -351,7 +528,6 @@
         return document.querySelector('div[data-loading]') || null;
     }
 
-    // Pink confirm button = rgb(244, 63, 143) background inside widget div
     function findPinkConfirmBtn() {
         const div = findWidgetDiv();
         if (!div) return null;
@@ -362,37 +538,36 @@
         return null;
     }
 
-    // Check if widget is currently in a loading state (brief flash after confirm2 click)
     function isWidgetLoading() {
         const div = findWidgetDiv();
         if (!div) return false;
         return div.getAttribute('data-loading') === 'true';
     }
 
-    // Code = short alphanumeric string inside or near widget div
-    // Only valid once data-loading has settled back to "false"
     function findCode() {
-        if (isWidgetLoading()) return null; // still loading, don't read yet
-
+        if (isWidgetLoading()) return null;
         const div = findWidgetDiv();
         if (!div) return null;
-
-        // Check all text nodes inside widget area
-        const candidates = div.querySelectorAll('*');
-        for (const el of candidates) {
-            // Skip elements with children (want leaf text nodes)
+        for (const el of div.querySelectorAll('*')) {
             if (el.children.length > 0) continue;
             const text = (el.innerText || el.textContent || '').trim();
             if (/^[A-Z0-9]{5,15}$/i.test(text)) return text;
         }
-
-        // Fallback: check whole widget text
         const widgetText = div.innerText || '';
         const match = widgetText.match(/\b([A-Z0-9]{5,15})\b/i);
-        if (match) return match[1];
-
-        return null;
+        return match ? match[1] : null;
     }
+
+    // Color palette for phases
+    const C = {
+        info    : '#8ab4f8',  // soft blue
+        success : '#28c840',  // green
+        warn    : '#ffbd2e',  // yellow
+        error   : '#ff5f56',  // red
+        purple  : '#c792ea',  // purple
+        orange  : '#f97316',  // orange
+        muted   : '#6a6a6a',  // muted
+    };
 
     // ─── MAIN POLL LOOP ───────────────────────────────────────────────────────
     const poll = setInterval(() => {
@@ -400,12 +575,13 @@
 
         if (elapsed > MAX_WAIT_MS) {
             clearInterval(poll);
-            showToast('⏱️ Timeout', '#dc2626');
+            setPhase('timeout', 'error');
+            showToast('⏱️ Timeout — max wait exceeded', C.error);
             return;
         }
 
-        // PHASE 1: Find & click balloon
         if (state === 'SEARCHING_BALLOON') {
+            setPhase('searching…', 'busy');
             const btn = findBalloonBtn();
             if (btn) {
                 state = 'CLICKING_CONFIRM1';
@@ -416,35 +592,35 @@
             return;
         }
 
-        // PHASE 2: Click first pink confirm (starts timer)
         if (state === 'CLICKING_CONFIRM1') {
+            setPhase('confirm #1', 'busy');
             const btn = findPinkConfirmBtn();
             if (btn) {
                 state = 'WAITING_TIMER';
                 lastConfirmClickTime = elapsed;
                 log('👆 Confirm #1 → clicking (timer starts)');
-                showToast('👆 Xác nhận #1!\nĐang đếm giờ...', '#7c3aed');
+                showToast('👆 Xác nhận #1 — đang đếm giờ…', C.purple);
                 humanClick(btn);
             }
             return;
         }
 
-        // PHASE 3: Wait for timer → pink button appears again
         if (state === 'WAITING_TIMER') {
+            setPhase('waiting timer…', 'busy');
             const cooldown = (elapsed - lastConfirmClickTime) > 4000;
             if (cooldown) {
                 const btn = findPinkConfirmBtn();
                 if (btn) {
                     state = 'CLICKING_CONFIRM2';
                     log('⏰ Timer done — confirm #2 appeared');
-                    showToast('⏰ Timer xong!\nXác nhận lần 2...', '#f97316');
+                    showToast('⏰ Timer xong! Xác nhận lần 2…', C.orange);
                 }
             }
             return;
         }
 
-        // PHASE 4: Click second pink confirm → code appears
         if (state === 'CLICKING_CONFIRM2') {
+            setPhase('confirm #2', 'busy');
             const btn = findPinkConfirmBtn();
             if (btn) {
                 state = 'FINDING_CODE';
@@ -455,11 +631,9 @@
             return;
         }
 
-        // PHASE 5: Find code immediately after confirm #2
         if (state === 'FINDING_CODE') {
-            // Small grace period for DOM to update after click
+            setPhase('reading code…', 'busy');
             if ((elapsed - lastConfirmClickTime) < 1200) return;
-
             if (isWidgetLoading()) {
                 log('⏳ Widget still loading code...');
                 return;
@@ -469,13 +643,10 @@
             if (code) {
                 state = 'DONE';
                 clearInterval(poll);
+                setPhase('done ✓', 'done');
                 log(`🎉 Code found: ${code}`);
-
-                // Save code for dashboard
                 GM_setValue('tpm_code', code);
 
-                // Copy to clipboard — GM_setClipboard bypasses browser user-gesture
-                // restrictions that block navigator.clipboard on mobile
                 let clipboardOk = false;
                 try {
                     GM_setClipboard(code, 'text');
@@ -486,11 +657,12 @@
                 }
 
                 if (clipboardOk) {
-                    showToast(`✅ Mã: ${code}\n(đã copy vào clipboard!)`, '#16a34a', 6000);
+                    showToast(`✅ Mã: ${code}  (đã copy!)`, C.success);
                 } else {
-                    showToast(`✅ Mã: ${code}\n⚠️ Copy thủ công (auto-copy lỗi)`, '#ea580c', 8000);
+                    showToast(`✅ Mã: ${code}\n⚠️ Copy thủ công (auto-copy lỗi)`, C.warn);
                 }
-                log('💾 Code saved. Go back to taplayma.com dashboard — it will auto-paste!');
+
+                log('💾 Code saved → go back to taplayma.com dashboard');
             } else {
                 log('🔎 Waiting for code...');
             }
