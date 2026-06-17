@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      0.7
-// @description  Full automation: balloon → confirm1 → timer → confirm2 → code → auto-paste dashboard
-// @author       You
+// @version      0.8
+// @description  Semi-auto human-interfaction
+// @author       Friczh
 // @match        *://*/*
 // @grant        GM_setClipboard
 // @grant        GM_setValue
@@ -37,35 +37,201 @@
         }, CLICK_DELAY_MS);
     }
 
-    function showToast(msg, color = '#222', duration = 3500) {
-        const old = document.getElementById('tpm-toast');
-        if (old) old.remove();
-        const toast = document.createElement('div');
-        toast.id = 'tpm-toast';
-        toast.innerText = msg;
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: ${color};
-            color: #fff;
-            padding: 12px 24px;
-            border-radius: 14px;
-            font-size: 15px;
-            font-weight: bold;
-            z-index: 999999;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-            pointer-events: none;
-            opacity: 1;
-            transition: opacity 0.5s;
-            text-align: center;
-            max-width: 85vw;
-            white-space: pre-line;
+    function showToast(msg, color = '#222', duration) {
+        ensureTerminal();
+        addLogLine(msg, color);
+    }
+
+    // ─── macOS TERMINAL.APP STYLE WINDOW ────────────────────────────────────
+    // States: 'normal' (full window open) | 'minimized' (taskbar pill only) | 'closed'
+    let winState = 'closed';
+    let termEl = null;
+    let pillEl = null;
+
+    function injectTerminalStyles() {
+        if (document.getElementById('tpm-term-style')) return;
+        const style = document.createElement('style');
+        style.id = 'tpm-term-style';
+        style.textContent = `
+            #tpm-term {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                width: 340px;
+                height: 280px;
+                background: rgba(30, 30, 30, 0.97);
+                border-radius: 10px;
+                box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+                font-family: -apple-system, "SF Mono", Menlo, Consolas, monospace;
+                z-index: 999999;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                border: 1px solid rgba(255,255,255,0.08);
+            }
+            #tpm-term-titlebar {
+                background: linear-gradient(#3a3a3a, #2b2b2b);
+                padding: 8px 10px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                border-bottom: 1px solid rgba(0,0,0,0.4);
+                flex-shrink: 0;
+                -webkit-user-select: none;
+                user-select: none;
+            }
+            .tpm-traffic {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                display: inline-block;
+                cursor: pointer;
+                position: relative;
+                border: 0.5px solid rgba(0,0,0,0.15);
+            }
+            .tpm-traffic.disabled {
+                cursor: default;
+                opacity: 0.45;
+            }
+            .tpm-red    { background: #ff5f56; }
+            .tpm-yellow { background: #ffbd2e; }
+            .tpm-green  { background: #27c93f; }
+            #tpm-term-title {
+                flex: 1;
+                text-align: center;
+                color: #c7c7c7;
+                font-size: 12.5px;
+                font-weight: 600;
+                margin-right: 52px;
+                pointer-events: none;
+            }
+            #tpm-term-body {
+                padding: 10px 12px;
+                overflow-y: auto;
+                flex: 1;
+                font-size: 12px;
+                line-height: 1.55;
+                color: #d4d4d4;
+                background: rgba(0,0,0,0.15);
+            }
+            #tpm-term-body::-webkit-scrollbar { width: 6px; }
+            #tpm-term-body::-webkit-scrollbar-thumb { background: #4a4a4a; border-radius: 3px; }
+            .tpm-log-line {
+                margin-bottom: 4px;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+            .tpm-log-line::before {
+                content: "$ ";
+                color: #6b6b6b;
+            }
+
+            /* Minimized floating taskbar pill — top right, no console body */
+            #tpm-pill {
+                position: fixed;
+                top: 14px;
+                right: 14px;
+                height: 34px;
+                padding: 0 12px;
+                border-radius: 17px;
+                background: rgba(40,40,40,0.95);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+                z-index: 999999;
+                display: none;
+                align-items: center;
+                gap: 8px;
+                font-family: -apple-system, sans-serif;
+            }
+            #tpm-pill .tpm-traffic { width: 11px; height: 11px; }
+            #tpm-pill-label {
+                color: #ccc;
+                font-size: 12px;
+                font-weight: 600;
+                pointer-events: none;
+            }
         `;
-        document.body.appendChild(toast);
-        setTimeout(() => { toast.style.opacity = '0'; }, duration - 500);
-        setTimeout(() => { toast.remove(); }, duration);
+        document.head.appendChild(style);
+    }
+
+    function buildTerminal() {
+        termEl = document.createElement('div');
+        termEl.id = 'tpm-term';
+        termEl.innerHTML = `
+            <div id="tpm-term-titlebar">
+                <span class="tpm-traffic tpm-red" id="tpm-btn-close" title="Close"></span>
+                <span class="tpm-traffic tpm-yellow" id="tpm-btn-min" title="Minimize"></span>
+                <span class="tpm-traffic tpm-green disabled" id="tpm-btn-max" title="Maximize"></span>
+                <span id="tpm-term-title">taplayma-helper — bash</span>
+            </div>
+            <div id="tpm-term-body"></div>
+        `;
+        document.body.appendChild(termEl);
+
+        pillEl = document.createElement('div');
+        pillEl.id = 'tpm-pill';
+        pillEl.innerHTML = `
+            <span class="tpm-traffic tpm-red" id="tpm-pill-close" title="Close"></span>
+            <span class="tpm-traffic tpm-yellow disabled" id="tpm-pill-min" title="Minimize"></span>
+            <span class="tpm-traffic tpm-green" id="tpm-pill-max" title="Maximize"></span>
+            <span id="tpm-pill-label">TapLayMa</span>
+        `;
+        document.body.appendChild(pillEl);
+
+        // ── Normal window buttons ──
+        // Close: works in normal state
+        termEl.querySelector('#tpm-btn-close').addEventListener('click', () => doClose());
+        // Minimize: only works when in normal state (it always is, when this btn is visible/active)
+        termEl.querySelector('#tpm-btn-min').addEventListener('click', () => doMinimize());
+        // Maximize: disabled while already normal — no-op
+
+        // ── Pill (minimized) buttons ──
+        pillEl.querySelector('#tpm-pill-close').addEventListener('click', () => doClose());
+        // Maximize: only works when minimized (it always is, when pill is visible)
+        pillEl.querySelector('#tpm-pill-max').addEventListener('click', () => doMaximize());
+        // Minimize: disabled while already minimized — no-op
+    }
+
+    function doClose() {
+        if (termEl) termEl.remove();
+        if (pillEl) pillEl.remove();
+        termEl = null;
+        pillEl = null;
+        winState = 'closed';
+    }
+
+    function doMinimize() {
+        if (winState !== 'normal') return; // guard: can't minimize unless currently open
+        termEl.style.display = 'none';
+        pillEl.style.display = 'flex';
+        winState = 'minimized';
+    }
+
+    function doMaximize() {
+        if (winState !== 'minimized') return; // guard: can't maximize unless currently minimized
+        pillEl.style.display = 'none';
+        termEl.style.display = 'flex';
+        winState = 'normal';
+    }
+
+    function ensureTerminal() {
+        if (winState === 'closed') {
+            injectTerminalStyles();
+            buildTerminal();
+            winState = 'normal';
+        }
+        // If minimized, leave it minimized — new logs still get added to body underneath
+    }
+
+    function addLogLine(msg, color = '#d4d4d4') {
+        if (!termEl) return;
+        const body = termEl.querySelector('#tpm-term-body');
+        const line = document.createElement('div');
+        line.className = 'tpm-log-line';
+        line.style.color = color;
+        line.textContent = msg;
+        body.appendChild(line);
+        body.scrollTop = body.scrollHeight;
     }
 
     // =========================================================================
