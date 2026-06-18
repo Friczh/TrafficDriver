@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      1.0
+// @version      1.1
 // @description  Semi-auto human-interaction
 // @author       Friczh
 // @match        *://*/*
@@ -61,6 +61,7 @@
                 left: 50%;
                 transform: translateX(-50%);
                 width: min(680px, 92vw);
+                aspect-ratio: 680 / 400;
                 background: #1c1c1e;
                 border-radius: 12px;
                 box-shadow:
@@ -75,7 +76,6 @@
                 flex-direction: column;
                 resize: both;
                 min-width: 320px;
-                min-height: 48px;
             }
 
             /* ── Titlebar ── */
