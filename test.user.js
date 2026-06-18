@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      1.1
+// @version      1.2
 // @description  Semi-auto human-interaction
 // @author       Friczh
 // @match        *://*/*
@@ -187,8 +187,9 @@
             #tpm-win.minimized #tpm-body { display: none; }
             #tpm-win.minimized {
                 resize: none;
-                min-height: unset;
+                aspect-ratio: auto !important;
                 height: auto !important;
+                min-height: unset !important;
             }
             #tpm-win.minimized #tpm-titlebar {
                 border-bottom: none;
@@ -225,6 +226,13 @@
         const tb = termEl.querySelector('#tpm-titlebar');
         tb.addEventListener('mousedown', e => {
             if (e.target.classList.contains('tpm-tl')) return;
+            // kill centering transform first so getBoundingClientRect is accurate
+            if (termEl.style.transform !== 'none') {
+                const r = termEl.getBoundingClientRect();
+                termEl.style.transform = 'none';
+                termEl.style.left = r.left + 'px';
+                termEl.style.top  = r.top  + 'px';
+            }
             isDragging = true;
             const r = termEl.getBoundingClientRect();
             dragOffX = e.clientX - r.left;
