@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      0.9
+// @version      1.0
 // @description  Semi-auto human-interaction
 // @author       Friczh
 // @match        *://*/*
@@ -25,7 +25,7 @@
     // ──────────────────────────────────────────────────────────────────────────
 
     function log(msg) {
-        console.log(`[TapLayMa v5] ${msg}`);
+        console.log(`[TapLayMa] ${msg}`);
     }
 
     function humanClick(el) {
@@ -37,490 +37,304 @@
         }, CLICK_DELAY_MS);
     }
 
-    function showToast(msg, color = '#d4d4d4') {
-        ensureTerminal();
-        addLogLine(msg, color);
-    }
-
-    // ─── macOS Terminal — State ───────────────────────────────────────────────
+    // ─── State ────────────────────────────────────────────────────────────────
     let winState = 'closed';
     let termEl   = null;
-    let pillEl   = null;
 
-    // ─── Drag state ──────────────────────────────────────────────────────────
+    // ─── Drag ─────────────────────────────────────────────────────────────────
     let isDragging = false, dragOffX = 0, dragOffY = 0;
 
-    function getTimestamp() {
-        const now = new Date();
-        const h = String(now.getHours()).padStart(2, '0');
-        const m = String(now.getMinutes()).padStart(2, '0');
-        const s = String(now.getSeconds()).padStart(2, '0');
-        return `${h}:${m}:${s}`;
+    function ts() {
+        const n = new Date();
+        return [n.getHours(), n.getMinutes(), n.getSeconds()]
+            .map(v => String(v).padStart(2, '0')).join(':');
     }
 
-    function injectTerminalStyles() {
-        if (document.getElementById('tpm-term-style')) return;
-        const style = document.createElement('style');
-        style.id = 'tpm-term-style';
-        style.textContent = `
-            /* ── Window ── */
-            #tpm-term {
+    function injectStyles() {
+        if (document.getElementById('tpm-style')) return;
+        const s = document.createElement('style');
+        s.id = 'tpm-style';
+        s.textContent = `
+            #tpm-win {
                 position: fixed;
-                bottom: 24px;
-                right: 24px;
-                width: 380px;
-                height: 300px;
-                min-width: 260px;
-                min-height: 160px;
-                background: #1e1e1e;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: min(680px, 92vw);
+                background: #1c1c1e;
                 border-radius: 12px;
                 box-shadow:
-                    0 0 0 0.5px rgba(255,255,255,0.08),
-                    0 2px 4px rgba(0,0,0,0.4),
-                    0 12px 48px rgba(0,0,0,0.7);
+                    0 0 0 0.5px rgba(255,255,255,0.07),
+                    0 8px 32px rgba(0,0,0,0.6),
+                    0 2px 8px rgba(0,0,0,0.5);
                 font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-                font-size: 12px;
+                font-size: 12.5px;
                 z-index: 2147483647;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
                 resize: both;
+                min-width: 320px;
+                min-height: 48px;
             }
 
-            /* ── Title bar ── */
+            /* ── Titlebar ── */
             #tpm-titlebar {
-                background: linear-gradient(180deg, #323232 0%, #2a2a2a 100%);
-                border-bottom: 1px solid #111;
-                padding: 0 12px;
+                background: linear-gradient(180deg, #3a3a3c 0%, #2c2c2e 100%);
+                border-bottom: 1px solid rgba(0,0,0,0.5);
+                padding: 0 16px;
                 height: 38px;
                 display: flex;
                 align-items: center;
-                gap: 8px;
                 flex-shrink: 0;
                 cursor: default;
-                -webkit-user-select: none;
                 user-select: none;
+                -webkit-user-select: none;
+                position: relative;
             }
 
             /* ── Traffic lights ── */
-            .tpm-tl-group {
+            .tpm-lights {
                 display: flex;
-                align-items: center;
                 gap: 8px;
+                align-items: center;
                 flex-shrink: 0;
+                z-index: 1;
             }
             .tpm-tl {
                 width: 13px;
                 height: 13px;
                 border-radius: 50%;
                 cursor: pointer;
-                position: relative;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                transition: filter 0.1s;
+                flex-shrink: 0;
+                transition: filter 0.12s;
             }
-            .tpm-tl.disabled {
-                cursor: default;
-                opacity: 0.35;
-            }
-            .tpm-tl-red    { background: #ff5f56; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.2), 0 0.5px 0 rgba(0,0,0,0.3); }
-            .tpm-tl-yellow { background: #ffbd2e; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.2), 0 0.5px 0 rgba(0,0,0,0.3); }
-            .tpm-tl-green  { background: #28c840; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.2), 0 0.5px 0 rgba(0,0,0,0.3); }
+            .tpm-tl:hover { filter: brightness(1.15); }
+            .tpm-tl-red    { background: #ff5f57; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.25), 0 0.5px 0 rgba(0,0,0,0.4); }
+            .tpm-tl-yellow { background: #febc2e; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.25), 0 0.5px 0 rgba(0,0,0,0.4); }
+            .tpm-tl-green  { background: #28c840; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.25), 0 0.5px 0 rgba(0,0,0,0.4); }
+            .tpm-tl-gray   { background: #44444a; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.1),  0 0.5px 0 rgba(0,0,0,0.4); cursor: default; }
 
-            /* Glyph on hover — macOS authentic */
-            .tpm-tl-glyph {
+            /* glyph on group hover */
+            .tpm-glyph {
                 opacity: 0;
                 font-size: 9px;
-                font-weight: 700;
-                line-height: 1;
-                color: rgba(0,0,0,0.55);
+                font-weight: 800;
+                color: rgba(0,0,0,0.5);
                 pointer-events: none;
-                transition: opacity 0.1s;
+                line-height: 1;
                 font-family: -apple-system, sans-serif;
+                transition: opacity 0.1s;
             }
-            .tpm-tl-group:hover .tpm-tl-glyph { opacity: 1; }
-            .tpm-tl.disabled .tpm-tl-glyph { opacity: 0 !important; }
+            .tpm-lights:hover .tpm-glyph { opacity: 1; }
+            .tpm-tl-gray .tpm-glyph { opacity: 0 !important; }
 
-            /* ── Window title ── */
+            /* ── Centered title ── */
             #tpm-title {
-                flex: 1;
+                position: absolute;
+                left: 0; right: 0;
                 text-align: center;
-                color: #9a9a9a;
+                color: #98989e;
                 font-size: 12px;
                 font-weight: 500;
                 font-family: -apple-system, system-ui, sans-serif;
                 letter-spacing: 0.01em;
                 pointer-events: none;
-                /* offset to visually center against the traffic light cluster */
-                margin-right: 53px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-            }
-
-            /* ── Tab bar (single tab style) ── */
-            #tpm-tabbar {
-                background: #252525;
-                border-bottom: 1px solid #111;
-                display: flex;
-                align-items: center;
-                padding: 0 12px;
-                height: 30px;
-                gap: 4px;
-                flex-shrink: 0;
-            }
-            .tpm-tab {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                background: #1e1e1e;
-                border: 1px solid #3a3a3a;
-                border-bottom: 1px solid #1e1e1e;
-                border-radius: 6px 6px 0 0;
-                padding: 0 10px;
-                height: 26px;
-                color: #ccc;
-                font-size: 11px;
-                font-family: -apple-system, system-ui, sans-serif;
-            }
-            .tpm-tab-dot {
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                background: #28c840;
-                flex-shrink: 0;
-            }
-            .tpm-tab-dot.idle { background: #6a6a6a; }
-            .tpm-tab-dot.busy { background: #ffbd2e; animation: tpm-pulse 1.2s ease-in-out infinite; }
-            .tpm-tab-dot.done { background: #28c840; }
-            .tpm-tab-dot.error { background: #ff5f56; }
-
-            @keyframes tpm-pulse {
-                0%, 100% { opacity: 1; }
-                50%       { opacity: 0.35; }
+                padding: 0 120px;
             }
 
             /* ── Log body ── */
             #tpm-body {
                 flex: 1;
                 overflow-y: auto;
-                padding: 10px 14px 12px;
-                background: #1e1e1e;
-                line-height: 1.65;
+                padding: 10px 16px 14px;
+                background: #1c1c1e;
+                line-height: 1.7;
             }
-            #tpm-body::-webkit-scrollbar        { width: 5px; }
-            #tpm-body::-webkit-scrollbar-track  { background: transparent; }
-            #tpm-body::-webkit-scrollbar-thumb  { background: #3a3a3a; border-radius: 4px; }
-            #tpm-body::-webkit-scrollbar-thumb:hover { background: #505050; }
+            #tpm-body::-webkit-scrollbar       { width: 4px; }
+            #tpm-body::-webkit-scrollbar-track { background: transparent; }
+            #tpm-body::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 4px; }
 
             /* ── Log lines ── */
             .tpm-line {
                 display: flex;
                 gap: 8px;
-                margin-bottom: 2px;
+                align-items: baseline;
+                margin-bottom: 1px;
                 white-space: pre-wrap;
                 word-break: break-word;
-                align-items: baseline;
             }
-            .tpm-line-ts {
-                color: #4a4a4a;
+            .tpm-ts {
+                color: #3a3a3c;
                 font-size: 10px;
                 flex-shrink: 0;
-                padding-top: 1px;
                 user-select: none;
             }
-            .tpm-line-prompt {
-                color: #3d3d3d;
+            .tpm-prompt {
+                color: #48484a;
                 flex-shrink: 0;
                 user-select: none;
             }
-            .tpm-line-msg {
-                flex: 1;
-            }
+            .tpm-msg { flex: 1; }
 
-            /* ── Status bar ── */
-            #tpm-statusbar {
-                background: #252525;
-                border-top: 1px solid #111;
-                height: 22px;
-                display: flex;
-                align-items: center;
-                padding: 0 12px;
-                gap: 10px;
-                flex-shrink: 0;
-                color: #555;
-                font-size: 10px;
-                font-family: -apple-system, system-ui, sans-serif;
-                user-select: none;
+            /* ── Minimized: only titlebar visible ── */
+            #tpm-win.minimized #tpm-body { display: none; }
+            #tpm-win.minimized {
+                resize: none;
+                min-height: unset;
+                height: auto !important;
             }
-            #tpm-statusbar .tpm-sb-item { display: flex; align-items: center; gap: 4px; }
-            #tpm-sb-phase { color: #7a7a7a; margin-left: auto; }
-
-            /* ── Minimized pill ── */
-            #tpm-pill {
-                position: fixed;
-                top: 16px;
-                right: 16px;
-                height: 32px;
-                padding: 0 14px 0 10px;
-                border-radius: 16px;
-                background: #2a2a2a;
-                border: 0.5px solid rgba(255,255,255,0.1);
-                box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-                z-index: 2147483647;
-                display: none;
-                align-items: center;
-                gap: 8px;
-                font-family: -apple-system, system-ui, sans-serif;
-                cursor: default;
-            }
-            .tpm-pill-tl-group { display: flex; gap: 6px; align-items: center; }
-            .tpm-pill-tl-group:hover .tpm-tl-glyph { opacity: 1; }
-
-            #tpm-pill-label {
-                color: #aaa;
-                font-size: 12px;
-                font-weight: 500;
-                pointer-events: none;
-            }
-            #tpm-pill-dot {
-                width: 7px;
-                height: 7px;
-                border-radius: 50%;
-                background: #28c840;
-                margin-left: 2px;
+            #tpm-win.minimized #tpm-titlebar {
+                border-bottom: none;
             }
         `;
-        document.head.appendChild(style);
+        document.head.appendChild(s);
     }
 
     function buildTerminal() {
-        // ── Main window ──
         termEl = document.createElement('div');
-        termEl.id = 'tpm-term';
+        termEl.id = 'tpm-win';
         termEl.innerHTML = `
             <div id="tpm-titlebar">
-                <div class="tpm-tl-group">
-                    <div class="tpm-tl tpm-tl-red" id="tpm-btn-close" title="Close">
-                        <span class="tpm-tl-glyph">✕</span>
-                    </div>
-                    <div class="tpm-tl tpm-tl-yellow" id="tpm-btn-min" title="Minimize">
-                        <span class="tpm-tl-glyph">−</span>
-                    </div>
-                    <div class="tpm-tl tpm-tl-green disabled" id="tpm-btn-max" title="Maximize">
-                        <span class="tpm-tl-glyph">+</span>
-                    </div>
+                <div class="tpm-lights">
+                    <div class="tpm-tl tpm-tl-red"    id="tpm-close"><span class="tpm-glyph">✕</span></div>
+                    <div class="tpm-tl tpm-tl-yellow"  id="tpm-min"  ><span class="tpm-glyph">−</span></div>
+                    <div class="tpm-tl tpm-tl-green"   id="tpm-max"  ><span class="tpm-glyph">+</span></div>
                 </div>
                 <span id="tpm-title">taplayma-helper — bash</span>
             </div>
-            <div id="tpm-tabbar">
-                <div class="tpm-tab">
-                    <div class="tpm-tab-dot idle" id="tpm-tab-dot"></div>
-                    <span id="tpm-tab-label">bash</span>
-                </div>
-            </div>
             <div id="tpm-body"></div>
-            <div id="tpm-statusbar">
-                <span class="tpm-sb-item">taplayma.com</span>
-                <span id="tpm-sb-phase">idle</span>
-            </div>
         `;
         document.body.appendChild(termEl);
 
-        // ── Pill (minimized) ──
-        pillEl = document.createElement('div');
-        pillEl.id = 'tpm-pill';
-        pillEl.innerHTML = `
-            <div class="tpm-pill-tl-group">
-                <div class="tpm-tl tpm-tl-red" id="tpm-pill-close" title="Close">
-                    <span class="tpm-tl-glyph">✕</span>
-                </div>
-                <div class="tpm-tl tpm-tl-yellow disabled" id="tpm-pill-min" title="Minimize">
-                    <span class="tpm-tl-glyph">−</span>
-                </div>
-                <div class="tpm-tl tpm-tl-green" id="tpm-pill-max" title="Restore">
-                    <span class="tpm-tl-glyph">+</span>
-                </div>
-            </div>
-            <span id="tpm-pill-label">TapLayMa</span>
-            <div id="tpm-pill-dot"></div>
-        `;
-        document.body.appendChild(pillEl);
+        termEl.querySelector('#tpm-close').addEventListener('click', () => {
+            termEl.remove(); termEl = null; winState = 'closed';
+        });
+        termEl.querySelector('#tpm-min').addEventListener('click', () => {
+            termEl.classList.toggle('minimized');
+            winState = termEl.classList.contains('minimized') ? 'minimized' : 'normal';
+        });
 
-        // ── Traffic light events ──
-        termEl.querySelector('#tpm-btn-close').addEventListener('click', doClose);
-        termEl.querySelector('#tpm-btn-min').addEventListener('click', doMinimize);
-        pillEl.querySelector('#tpm-pill-close').addEventListener('click', doClose);
-        pillEl.querySelector('#tpm-pill-max').addEventListener('click', doMaximize);
-
-        // ── Drag ──
-        const titlebar = termEl.querySelector('#tpm-titlebar');
-        titlebar.addEventListener('mousedown', e => {
+        // drag
+        const tb = termEl.querySelector('#tpm-titlebar');
+        tb.addEventListener('mousedown', e => {
             if (e.target.classList.contains('tpm-tl')) return;
             isDragging = true;
-            const rect = termEl.getBoundingClientRect();
-            dragOffX = e.clientX - rect.left;
-            dragOffY = e.clientY - rect.top;
+            const r = termEl.getBoundingClientRect();
+            dragOffX = e.clientX - r.left;
+            dragOffY = e.clientY - r.top;
             termEl.style.transition = 'none';
             e.preventDefault();
         });
         document.addEventListener('mousemove', e => {
             if (!isDragging) return;
-            const x = e.clientX - dragOffX;
-            const y = e.clientY - dragOffY;
-            // Clamp to viewport
-            const maxX = window.innerWidth  - termEl.offsetWidth;
-            const maxY = window.innerHeight - termEl.offsetHeight;
-            termEl.style.left   = Math.max(0, Math.min(x, maxX)) + 'px';
-            termEl.style.top    = Math.max(0, Math.min(y, maxY)) + 'px';
-            termEl.style.right  = 'auto';
-            termEl.style.bottom = 'auto';
+            const x = Math.max(0, Math.min(e.clientX - dragOffX, window.innerWidth  - termEl.offsetWidth));
+            const y = Math.max(0, Math.min(e.clientY - dragOffY, window.innerHeight - termEl.offsetHeight));
+            termEl.style.left      = x + 'px';
+            termEl.style.top       = y + 'px';
+            termEl.style.transform = 'none';
         });
         document.addEventListener('mouseup', () => { isDragging = false; });
     }
 
-    function doClose() {
-        if (termEl) termEl.remove();
-        if (pillEl) pillEl.remove();
-        termEl = null; pillEl = null;
-        winState = 'closed';
-    }
-
-    function doMinimize() {
-        if (winState !== 'normal') return;
-        termEl.style.display = 'none';
-        pillEl.style.display = 'flex';
-        winState = 'minimized';
-    }
-
-    function doMaximize() {
-        if (winState !== 'minimized') return;
-        pillEl.style.display = 'none';
-        termEl.style.display = 'flex';
-        winState = 'normal';
-    }
-
     function ensureTerminal() {
         if (winState === 'closed') {
-            injectTerminalStyles();
+            injectStyles();
             buildTerminal();
             winState = 'normal';
         }
     }
 
-    function setPhase(label, dotState = 'idle') {
+    function setTitle(text) {
         if (!termEl) return;
-        const dot   = termEl.querySelector('#tpm-tab-dot');
-        const phase = termEl.querySelector('#tpm-sb-phase');
-        const tab   = termEl.querySelector('#tpm-tab-label');
-        if (dot)   { dot.className = 'tpm-tab-dot ' + dotState; }
-        if (phase) { phase.textContent = label; }
-        if (tab)   { tab.textContent = label; }
+        termEl.querySelector('#tpm-title').textContent = text;
     }
 
-    function addLogLine(msg, color = '#d4d4d4') {
-        if (!termEl) return;
+    function addLine(msg, color = '#d1d1d6') {
+        ensureTerminal();
+        if (termEl.classList.contains('minimized')) termEl.classList.remove('minimized');
         const body = termEl.querySelector('#tpm-body');
         const line = document.createElement('div');
         line.className = 'tpm-line';
-        line.innerHTML = `
-            <span class="tpm-line-ts">${getTimestamp()}</span>
-            <span class="tpm-line-prompt">$</span>
-            <span class="tpm-line-msg" style="color:${color}">${msg}</span>
-        `;
+        line.innerHTML = `<span class="tpm-ts">${ts()}</span><span class="tpm-prompt">$</span><span class="tpm-msg" style="color:${color}">${msg}</span>`;
         body.appendChild(line);
         body.scrollTop = body.scrollHeight;
     }
 
+    const C = {
+        info    : '#6fb3f7',
+        success : '#30d158',
+        warn    : '#ffd60a',
+        error   : '#ff453a',
+        purple  : '#bf5af2',
+        orange  : '#ff9f0a',
+        pink    : '#ff375f',
+    };
+
     // =========================================================================
-    // DASHBOARD SIDE — taplayma.com/link/*
+    // DASHBOARD SIDE
     // =========================================================================
     if (IS_DASHBOARD) {
-        log('📋 Dashboard detected');
+        log('Dashboard detected');
 
         function tryPasteCode() {
             const savedCode = GM_getValue('tpm_code', '');
-            if (!savedCode) {
-                log('No saved code found yet.');
-                return;
-            }
+            if (!savedCode) return;
 
             const input     = document.querySelector('input[name="code"]');
             const submitBtn = document.querySelector('button[type="submit"]');
+            if (!input || !submitBtn) return false;
 
-            if (!input || !submitBtn) {
-                log('Input or button not found yet, retrying...');
-                return false;
-            }
-
-            const nativeInputSetter = Object.getOwnPropertyDescriptor(
-                window.HTMLInputElement.prototype, 'value'
-            ).set;
-            nativeInputSetter.call(input, savedCode);
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(input, savedCode);
             input.dispatchEvent(new Event('input',  { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
 
-            log(`✅ Pasted code: ${savedCode}`);
-            showToast(`✅ Đã nhập mã: ${savedCode}\nĐang xác nhận...`, '#28c840');
+            addLine(`✅ Đã nhập mã: ${savedCode} — đang xác nhận...`, C.success);
             GM_setValue('tpm_code', '');
 
             setTimeout(() => {
                 submitBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
                 submitBtn.click();
-                log('🚀 Submitted!');
             }, 800);
-
             return true;
         }
 
-        setInterval(() => tryPasteCode(), 1000);
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                log('👀 Tab became visible — checking for new code...');
-                tryPasteCode();
-            }
-        });
-
-        window.addEventListener('focus', () => {
-            log('🎯 Window focused — checking for new code...');
-            tryPasteCode();
-        });
-
+        setInterval(tryPasteCode, 1000);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tryPasteCode(); });
+        window.addEventListener('focus', tryPasteCode);
         return;
     }
 
     // =========================================================================
-    // EXTERNAL SITE — find widget, run full flow
+    // EXTERNAL SITE
     // =========================================================================
     if (!IS_EXTERNAL) return;
 
     function hasWidget() {
-        for (const s of document.querySelectorAll('script[src]')) {
+        for (const s of document.querySelectorAll('script[src]'))
             if (s.src && s.src.includes('taplayma.com')) return true;
-        }
         return false;
     }
 
-    if (!hasWidget()) {
-        log('No taplayma widget on this page. Exiting.');
-        return;
-    }
-
-    log('🎯 Taplayma widget detected on external site');
+    if (!hasWidget()) return;
 
     let state = 'SEARCHING_BALLOON';
     let elapsed = 0;
-    let lastConfirmClickTime = 0;
+    let lastClickTime = 0;
 
     function findBalloonBtn() {
-        for (const img of document.querySelectorAll('img')) {
+        for (const img of document.querySelectorAll('img'))
             if (img.src && img.src.includes(BALLOON_SRC)) {
                 const btn = img.closest('button');
                 if (btn) return btn;
             }
-        }
         return null;
     }
 
@@ -528,143 +342,106 @@
         return document.querySelector('div[data-loading]') || null;
     }
 
-    function findPinkConfirmBtn() {
+    function findPinkBtn() {
         const div = findWidgetDiv();
         if (!div) return null;
         const btn = div.querySelector('button');
         if (!btn) return null;
         const bg = btn.style.background || btn.style.backgroundColor || '';
-        if (bg.includes('244') && bg.includes('63') && bg.includes('143')) return btn;
-        return null;
+        return (bg.includes('244') && bg.includes('63') && bg.includes('143')) ? btn : null;
     }
 
-    function isWidgetLoading() {
+    function isLoading() {
         const div = findWidgetDiv();
-        if (!div) return false;
-        return div.getAttribute('data-loading') === 'true';
+        return div ? div.getAttribute('data-loading') === 'true' : false;
     }
 
     function findCode() {
-        if (isWidgetLoading()) return null;
+        if (isLoading()) return null;
         const div = findWidgetDiv();
         if (!div) return null;
         for (const el of div.querySelectorAll('*')) {
             if (el.children.length > 0) continue;
-            const text = (el.innerText || el.textContent || '').trim();
-            if (/^[A-Z0-9]{5,15}$/i.test(text)) return text;
+            const t = (el.innerText || el.textContent || '').trim();
+            if (/^[A-Z0-9]{5,15}$/i.test(t)) return t;
         }
-        const widgetText = div.innerText || '';
-        const match = widgetText.match(/\b([A-Z0-9]{5,15})\b/i);
-        return match ? match[1] : null;
+        const m = (div.innerText || '').match(/\b([A-Z0-9]{5,15})\b/i);
+        return m ? m[1] : null;
     }
 
-    // Color palette for phases
-    const C = {
-        info    : '#8ab4f8',  // soft blue
-        success : '#28c840',  // green
-        warn    : '#ffbd2e',  // yellow
-        error   : '#ff5f56',  // red
-        purple  : '#c792ea',  // purple
-        orange  : '#f97316',  // orange
-        muted   : '#6a6a6a',  // muted
-    };
+    ensureTerminal();
+    setTitle('taplayma-helper — bash');
+    addLine('🎯 Widget detected — starting...', C.info);
 
-    // ─── MAIN POLL LOOP ───────────────────────────────────────────────────────
     const poll = setInterval(() => {
         elapsed += POLL_MS;
 
         if (elapsed > MAX_WAIT_MS) {
             clearInterval(poll);
-            setPhase('timeout', 'error');
-            showToast('⏱️ Timeout — max wait exceeded', C.error);
+            setTitle('taplayma-helper — timeout');
+            addLine('⏱️ Timeout — max wait exceeded', C.error);
             return;
         }
 
         if (state === 'SEARCHING_BALLOON') {
-            setPhase('searching…', 'busy');
             const btn = findBalloonBtn();
             if (btn) {
                 state = 'CLICKING_CONFIRM1';
-                log('🎈 Balloon → clicking');
-                showToast('🎈 Đã nhấn balloon!', '#e91e8c');
+                setTitle('taplayma-helper — confirm #1');
+                addLine('🎈 Balloon found → clicking', C.pink);
                 humanClick(btn);
             }
             return;
         }
 
         if (state === 'CLICKING_CONFIRM1') {
-            setPhase('confirm #1', 'busy');
-            const btn = findPinkConfirmBtn();
+            const btn = findPinkBtn();
             if (btn) {
                 state = 'WAITING_TIMER';
-                lastConfirmClickTime = elapsed;
-                log('👆 Confirm #1 → clicking (timer starts)');
-                showToast('👆 Xác nhận #1 — đang đếm giờ…', C.purple);
+                lastClickTime = elapsed;
+                addLine('👆 Confirm #1 clicked — waiting for timer...', C.purple);
+                setTitle('taplayma-helper — waiting timer');
                 humanClick(btn);
             }
             return;
         }
 
         if (state === 'WAITING_TIMER') {
-            setPhase('waiting timer…', 'busy');
-            const cooldown = (elapsed - lastConfirmClickTime) > 4000;
-            if (cooldown) {
-                const btn = findPinkConfirmBtn();
+            if ((elapsed - lastClickTime) > 4000) {
+                const btn = findPinkBtn();
                 if (btn) {
                     state = 'CLICKING_CONFIRM2';
-                    log('⏰ Timer done — confirm #2 appeared');
-                    showToast('⏰ Timer xong! Xác nhận lần 2…', C.orange);
+                    addLine('⏰ Timer done! Confirm #2 appeared', C.orange);
+                    setTitle('taplayma-helper — confirm #2');
                 }
             }
             return;
         }
 
         if (state === 'CLICKING_CONFIRM2') {
-            setPhase('confirm #2', 'busy');
-            const btn = findPinkConfirmBtn();
+            const btn = findPinkBtn();
             if (btn) {
                 state = 'FINDING_CODE';
-                lastConfirmClickTime = elapsed;
-                log('👆 Confirm #2 → clicking');
+                lastClickTime = elapsed;
+                addLine('👆 Confirm #2 clicked — reading code...', C.orange);
+                setTitle('taplayma-helper — reading code');
                 humanClick(btn);
             }
             return;
         }
 
         if (state === 'FINDING_CODE') {
-            setPhase('reading code…', 'busy');
-            if ((elapsed - lastConfirmClickTime) < 1200) return;
-            if (isWidgetLoading()) {
-                log('⏳ Widget still loading code...');
-                return;
-            }
-
+            if ((elapsed - lastClickTime) < 1200 || isLoading()) return;
             const code = findCode();
             if (code) {
                 state = 'DONE';
                 clearInterval(poll);
-                setPhase('done ✓', 'done');
-                log(`🎉 Code found: ${code}`);
+                setTitle('taplayma-helper — done ✓');
                 GM_setValue('tpm_code', code);
-
-                let clipboardOk = false;
-                try {
-                    GM_setClipboard(code, 'text');
-                    clipboardOk = true;
-                    log('📋 GM_setClipboard succeeded');
-                } catch (e) {
-                    log(`⚠️ GM_setClipboard failed: ${e.message}`);
-                }
-
-                if (clipboardOk) {
-                    showToast(`✅ Mã: ${code}  (đã copy!)`, C.success);
-                } else {
-                    showToast(`✅ Mã: ${code}\n⚠️ Copy thủ công (auto-copy lỗi)`, C.warn);
-                }
-
-                log('💾 Code saved → go back to taplayma.com dashboard');
-            } else {
-                log('🔎 Waiting for code...');
+                let clipOk = false;
+                try { GM_setClipboard(code, 'text'); clipOk = true; } catch (e) {}
+                addLine(`✅ Mã: ${code}${clipOk ? '  (copied!)' : '  ⚠️ copy thủ công'}`, C.success);
+                addLine('💾 Saved → quay lại taplayma.com dashboard', C.info);
             }
             return;
         }
