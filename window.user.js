@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         macOS Terminal Overlay
+// @name         macOS Terminal 
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Injects a draggable, minimizable macOS-style terminal window
-// @author       You
+// @version      6.7
+// @description  macOS Terminal style console box
+// @author       DeepSeek
 // @match        *://*/*
 // @grant        none
 // @run-at       document-idle
@@ -226,12 +226,6 @@
     document.body.appendChild(windowEl);
     body = windowEl.querySelector('.macos-body');
 
-    // Dragging setup
-    const titlebar = windowEl.querySelector('#macos-drag-handle');
-    titlebar.addEventListener('mousedown', onDragStart);
-    document.addEventListener('mousemove', onDragMove);
-    document.addEventListener('mouseup', onDragEnd);
-
     // Button events
     windowEl.querySelector('[data-action="close"]').addEventListener('click', closeWindow);
     windowEl.querySelector('[data-action="minimize"]').addEventListener('click', minimizeWindow);
@@ -242,35 +236,6 @@
     document.addEventListener('mousedown', (e) => {
       if (windowEl && !windowEl.contains(e.target) && isFocused) blurWindow();
     });
-  }
-
-  // ==================== 5. DRAGGING ====================
-  function onDragStart(e) {
-    // only drag from titlebar, ignore traffic lights
-    if (e.target.closest('.macos-traffic-lights')) return;
-    dragging = true;
-    const rect = windowEl.getBoundingClientRect();
-    // snap to pixel position (remove centering)
-    windowEl.style.left = rect.left + 'px';
-    windowEl.style.top = rect.top + 'px';
-    windowEl.style.transform = 'none';
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    startLeft = rect.left;
-    startTop = rect.top;
-    e.preventDefault();
-  }
-
-  function onDragMove(e) {
-    if (!dragging) return;
-    const dx = e.clientX - dragStartX;
-    const dy = e.clientY - dragStartY;
-    windowEl.style.left = (startLeft + dx) + 'px';
-    windowEl.style.top = (startTop + dy) + 'px';
-  }
-
-  function onDragEnd() {
-    dragging = false;
   }
 
   // ==================== 6. FOCUS / BLUR ====================
@@ -392,13 +357,8 @@
     }
   };
 
-  // ---------- demo (remove in production) ----------
-  // Uncomment the next block to see a quick demo after page load.
-  /*
   setTimeout(() => {
-    macosTerminal.log('macOS Terminal overlay ready.', macosTerminal.colors.INFO);
-    macosTerminal.log('Type `macosTerminal.log("hello")` in console.', macosTerminal.colors.MUTED);
+    macosTerminal.log('macOS Terminal ready.', macosTerminal.colors.INFO);
+    macosTerminal.log('Type `macosTerminal.log("Hello World!")` in console.', macosTerminal.colors.MUTED);
   }, 800);
-  */
-
 })();
