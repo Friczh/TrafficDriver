@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TapLayMa - UI Helper
 // @namespace    taplayma-helper
-// @version      1.2
+// @version      1.4
 // @description  Semi-auto human-interaction
 // @author       Friczh
 // @match        *://*/*
@@ -15,39 +15,37 @@
 (function () {
     'use strict';
 
-    // ─── CONFIG ───────────────────────────────────────────────────────────────
     const BALLOON_SRC    = 'taplayma.com/media/svg/brand-logos/balloon.svg';
     const POLL_MS        = 800;
     const MAX_WAIT_MS    = 120000;
     const CLICK_DELAY_MS = 400;
     const IS_DASHBOARD   = location.hostname === 'taplayma.com' && location.pathname.startsWith('/link/');
     const IS_EXTERNAL    = !location.hostname.includes('taplayma.com');
-    // ──────────────────────────────────────────────────────────────────────────
 
-    function log(msg) {
-        console.log(`[TapLayMa] ${msg}`);
-    }
+    const C = {
+        info    : '#6fb3f7',
+        success : '#30d158',
+        warn    : '#ffd60a',
+        error   : '#ff453a',
+        purple  : '#bf5af2',
+        orange  : '#ff9f0a',
+        pink    : '#ff375f',
+        muted   : '#6a6a6a',
+    };
 
-    function humanClick(el) {
-        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-        setTimeout(() => {
-            el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            el.click();
-        }, CLICK_DELAY_MS);
-    }
-
-    // ─── State ────────────────────────────────────────────────────────────────
     let winState = 'closed';
     let termEl   = null;
-
-    // ─── Drag ─────────────────────────────────────────────────────────────────
-    let isDragging = false, dragOffX = 0, dragOffY = 0;
 
     function ts() {
         const n = new Date();
         return [n.getHours(), n.getMinutes(), n.getSeconds()]
             .map(v => String(v).padStart(2, '0')).join(':');
+    }
+
+    function humanClick(el) {
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        setTimeout(() => el.dispatchEvent(new MouseEvent('click', { bubbles: true })), CLICK_DELAY_MS);
     }
 
     function injectStyles() {
@@ -77,8 +75,6 @@
                 resize: both;
                 min-width: 320px;
             }
-
-            /* ── Titlebar ── */
             #tpm-titlebar {
                 background: linear-gradient(180deg, #3a3a3c 0%, #2c2c2e 100%);
                 border-bottom: 1px solid rgba(0,0,0,0.5);
@@ -92,8 +88,6 @@
                 -webkit-user-select: none;
                 position: relative;
             }
-
-            /* ── Traffic lights ── */
             .tpm-lights {
                 display: flex;
                 gap: 8px;
@@ -116,9 +110,7 @@
             .tpm-tl-red    { background: #ff5f57; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.25), 0 0.5px 0 rgba(0,0,0,0.4); }
             .tpm-tl-yellow { background: #febc2e; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.25), 0 0.5px 0 rgba(0,0,0,0.4); }
             .tpm-tl-green  { background: #28c840; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.25), 0 0.5px 0 rgba(0,0,0,0.4); }
-            .tpm-tl-gray   { background: #44444a; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.1),  0 0.5px 0 rgba(0,0,0,0.4); cursor: default; }
-
-            /* glyph on group hover */
+            .tpm-tl-gray   { background: #44444a; box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.1), 0 0.5px 0 rgba(0,0,0,0.4); cursor: default; pointer-events: none; }
             .tpm-glyph {
                 opacity: 0;
                 font-size: 9px;
@@ -131,8 +123,6 @@
             }
             .tpm-lights:hover .tpm-glyph { opacity: 1; }
             .tpm-tl-gray .tpm-glyph { opacity: 0 !important; }
-
-            /* ── Centered title ── */
             #tpm-title {
                 position: absolute;
                 left: 0; right: 0;
@@ -148,20 +138,23 @@
                 text-overflow: ellipsis;
                 padding: 0 120px;
             }
-
-            /* ── Log body ── */
             #tpm-body {
                 flex: 1;
                 overflow-y: auto;
                 padding: 10px 16px 14px;
                 background: #1c1c1e;
                 line-height: 1.7;
+                max-height: 800px;
+                opacity: 1;
+                transition:
+                    max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.22s ease,
+                    padding-top 0.3s ease,
+                    padding-bottom 0.3s ease;
             }
             #tpm-body::-webkit-scrollbar       { width: 4px; }
             #tpm-body::-webkit-scrollbar-track { background: transparent; }
             #tpm-body::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 4px; }
-
-            /* ── Log lines ── */
             .tpm-line {
                 display: flex;
                 gap: 8px;
@@ -170,32 +163,36 @@
                 white-space: pre-wrap;
                 word-break: break-word;
             }
-            .tpm-ts {
-                color: #3a3a3c;
-                font-size: 10px;
-                flex-shrink: 0;
-                user-select: none;
+            .tpm-ts     { color: #3a3a3c; font-size: 10px; flex-shrink: 0; user-select: none; }
+            .tpm-prompt { color: #48484a; flex-shrink: 0; user-select: none; }
+            .tpm-msg    { flex: 1; }
+            #tpm-win.minimized #tpm-body {
+                max-height: 0 !important;
+                opacity: 0 !important;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+                overflow: hidden !important;
             }
-            .tpm-prompt {
-                color: #48484a;
-                flex-shrink: 0;
-                user-select: none;
-            }
-            .tpm-msg { flex: 1; }
-
-            /* ── Minimized: only titlebar visible ── */
-            #tpm-win.minimized #tpm-body { display: none; }
             #tpm-win.minimized {
                 resize: none;
                 aspect-ratio: auto !important;
                 height: auto !important;
                 min-height: unset !important;
             }
-            #tpm-win.minimized #tpm-titlebar {
-                border-bottom: none;
-            }
+            #tpm-win.minimized #tpm-titlebar { border-bottom: none; }
         `;
         document.head.appendChild(s);
+    }
+
+    function setMinimized(val) {
+        termEl.classList.toggle('minimized', val);
+        winState = val ? 'minimized' : 'normal';
+        const btnMin = termEl.querySelector('#tpm-min');
+        const btnMax = termEl.querySelector('#tpm-max');
+        btnMin.className = 'tpm-tl ' + (val ? 'tpm-tl-gray' : 'tpm-tl-yellow');
+        btnMax.className = 'tpm-tl ' + (val ? 'tpm-tl-green' : 'tpm-tl-gray');
+        btnMin.innerHTML = `<span class="tpm-glyph">−</span>`;
+        btnMax.innerHTML = `<span class="tpm-glyph">+</span>`;
     }
 
     function buildTerminal() {
@@ -206,7 +203,7 @@
                 <div class="tpm-lights">
                     <div class="tpm-tl tpm-tl-red"    id="tpm-close"><span class="tpm-glyph">✕</span></div>
                     <div class="tpm-tl tpm-tl-yellow"  id="tpm-min"  ><span class="tpm-glyph">−</span></div>
-                    <div class="tpm-tl tpm-tl-green"   id="tpm-max"  ><span class="tpm-glyph">+</span></div>
+                    <div class="tpm-tl tpm-tl-gray"    id="tpm-max"  ><span class="tpm-glyph">+</span></div>
                 </div>
                 <span id="tpm-title">taplayma-helper — bash</span>
             </div>
@@ -215,40 +212,17 @@
         document.body.appendChild(termEl);
 
         termEl.querySelector('#tpm-close').addEventListener('click', () => {
-            termEl.remove(); termEl = null; winState = 'closed';
+            termEl.remove();
+            termEl = null;
+            winState = 'closed';
         });
         termEl.querySelector('#tpm-min').addEventListener('click', () => {
-            termEl.classList.toggle('minimized');
-            winState = termEl.classList.contains('minimized') ? 'minimized' : 'normal';
+            if (winState === 'normal') setMinimized(true);
+        });
+        termEl.querySelector('#tpm-max').addEventListener('click', () => {
+            if (winState === 'minimized') setMinimized(false);
         });
 
-        // drag
-        const tb = termEl.querySelector('#tpm-titlebar');
-        tb.addEventListener('mousedown', e => {
-            if (e.target.classList.contains('tpm-tl')) return;
-            // kill centering transform first so getBoundingClientRect is accurate
-            if (termEl.style.transform !== 'none') {
-                const r = termEl.getBoundingClientRect();
-                termEl.style.transform = 'none';
-                termEl.style.left = r.left + 'px';
-                termEl.style.top  = r.top  + 'px';
-            }
-            isDragging = true;
-            const r = termEl.getBoundingClientRect();
-            dragOffX = e.clientX - r.left;
-            dragOffY = e.clientY - r.top;
-            termEl.style.transition = 'none';
-            e.preventDefault();
-        });
-        document.addEventListener('mousemove', e => {
-            if (!isDragging) return;
-            const x = Math.max(0, Math.min(e.clientX - dragOffX, window.innerWidth  - termEl.offsetWidth));
-            const y = Math.max(0, Math.min(e.clientY - dragOffY, window.innerHeight - termEl.offsetHeight));
-            termEl.style.left      = x + 'px';
-            termEl.style.top       = y + 'px';
-            termEl.style.transform = 'none';
-        });
-        document.addEventListener('mouseup', () => { isDragging = false; });
     }
 
     function ensureTerminal() {
@@ -266,7 +240,7 @@
 
     function addLine(msg, color = '#d1d1d6') {
         ensureTerminal();
-        if (termEl.classList.contains('minimized')) termEl.classList.remove('minimized');
+        if (winState === 'minimized') setMinimized(false);
         const body = termEl.querySelector('#tpm-body');
         const line = document.createElement('div');
         line.className = 'tpm-line';
@@ -275,29 +249,14 @@
         body.scrollTop = body.scrollHeight;
     }
 
-    const C = {
-        info    : '#6fb3f7',
-        success : '#30d158',
-        warn    : '#ffd60a',
-        error   : '#ff453a',
-        purple  : '#bf5af2',
-        orange  : '#ff9f0a',
-        pink    : '#ff375f',
-    };
-
-    // =========================================================================
-    // DASHBOARD SIDE
-    // =========================================================================
     if (IS_DASHBOARD) {
-        log('Dashboard detected');
-
         function tryPasteCode() {
             const savedCode = GM_getValue('tpm_code', '');
             if (!savedCode) return;
 
             const input     = document.querySelector('input[name="code"]');
             const submitBtn = document.querySelector('button[type="submit"]');
-            if (!input || !submitBtn) return false;
+            if (!input || !submitBtn) return;
 
             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
             setter.call(input, savedCode);
@@ -307,11 +266,7 @@
             addLine(`✅ Đã nhập mã: ${savedCode} — đang xác nhận...`, C.success);
             GM_setValue('tpm_code', '');
 
-            setTimeout(() => {
-                submitBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                submitBtn.click();
-            }, 800);
-            return true;
+            setTimeout(() => submitBtn.dispatchEvent(new MouseEvent('click', { bubbles: true })), 800);
         }
 
         setInterval(tryPasteCode, 1000);
@@ -320,9 +275,6 @@
         return;
     }
 
-    // =========================================================================
-    // EXTERNAL SITE
-    // =========================================================================
     if (!IS_EXTERNAL) return;
 
     function hasWidget() {
@@ -337,6 +289,15 @@
     let elapsed = 0;
     let lastClickTime = 0;
 
+    function findWidgetDiv() {
+        return document.querySelector('div[data-loading]') || null;
+    }
+
+    function widgetText() {
+        const div = findWidgetDiv();
+        return div ? (div.innerText || div.textContent || '').toLowerCase() : '';
+    }
+
     function findBalloonBtn() {
         for (const img of document.querySelectorAll('img'))
             if (img.src && img.src.includes(BALLOON_SRC)) {
@@ -346,17 +307,24 @@
         return null;
     }
 
-    function findWidgetDiv() {
-        return document.querySelector('div[data-loading]') || null;
-    }
-
     function findPinkBtn() {
         const div = findWidgetDiv();
         if (!div) return null;
         const btn = div.querySelector('button');
-        if (!btn) return null;
+        if (!btn || btn.disabled) return null;
         const bg = btn.style.background || btn.style.backgroundColor || '';
         return (bg.includes('244') && bg.includes('63') && bg.includes('143')) ? btn : null;
+    }
+
+    function findCountdown() {
+        const div = findWidgetDiv();
+        if (!div) return -1;
+        for (const el of div.querySelectorAll('*')) {
+            if (el.children.length > 0) continue;
+            const t = (el.innerText || el.textContent || '').trim();
+            if (/^\d+$/.test(t) && t.length <= 3) return parseInt(t);
+        }
+        return -1;
     }
 
     function isLoading() {
@@ -391,6 +359,35 @@
             return;
         }
 
+        const wt = widgetText();
+
+        if (wt.includes('đúng web') || wt.includes('không đổi ip') || wt.includes('không đổi trình duyệt')) {
+            if (state !== 'SESSION_ERROR') {
+                state = 'SESSION_ERROR';
+                clearInterval(poll);
+                setTitle('taplayma-helper — blocked');
+                addLine('❌ Lỗi phiên: vào đúng web, không đổi IP/trình duyệt', C.error);
+            }
+            return;
+        }
+
+        if (wt.includes('click vào link') || wt.includes('click vào các trang')) {
+            if (state !== 'MANUAL_LINK') {
+                state = 'MANUAL_LINK';
+                setTitle('taplayma-helper — manual required');
+                addLine('👆 Bước thủ công: click vào 1 bài viết bất kỳ trên trang này', C.warn);
+                addLine('⏳ Script tự tiếp tục sau khi bạn thao tác...', C.muted);
+            }
+            return;
+        }
+
+        if (state === 'MANUAL_LINK') {
+            state = 'SEARCHING_BALLOON';
+            elapsed = 0;
+            setTitle('taplayma-helper — bash');
+            addLine('✅ Tiếp tục tự động...', C.success);
+        }
+
         if (state === 'SEARCHING_BALLOON') {
             const btn = findBalloonBtn();
             if (btn) {
@@ -407,38 +404,30 @@
             if (btn) {
                 state = 'WAITING_TIMER';
                 lastClickTime = elapsed;
-                addLine('👆 Confirm #1 clicked — waiting for timer...', C.purple);
                 setTitle('taplayma-helper — waiting timer');
+                addLine('👆 Confirm #1 clicked — waiting for timer...', C.purple);
                 humanClick(btn);
             }
             return;
         }
 
         if (state === 'WAITING_TIMER') {
-            if ((elapsed - lastClickTime) > 4000) {
+            const n = findCountdown();
+            const timerDone = (n === 0) || (n === -1 && (elapsed - lastClickTime) > 5000);
+            if (timerDone) {
                 const btn = findPinkBtn();
                 if (btn) {
                     state = 'CLICKING_CONFIRM2';
-                    addLine('⏰ Timer done! Confirm #2 appeared', C.orange);
+                    lastClickTime = elapsed;
                     setTitle('taplayma-helper — confirm #2');
+                    addLine('⏰ Timer done — confirm #2 appeared', C.orange);
+                    humanClick(btn);
                 }
             }
             return;
         }
 
         if (state === 'CLICKING_CONFIRM2') {
-            const btn = findPinkBtn();
-            if (btn) {
-                state = 'FINDING_CODE';
-                lastClickTime = elapsed;
-                addLine('👆 Confirm #2 clicked — reading code...', C.orange);
-                setTitle('taplayma-helper — reading code');
-                humanClick(btn);
-            }
-            return;
-        }
-
-        if (state === 'FINDING_CODE') {
             if ((elapsed - lastClickTime) < 1200 || isLoading()) return;
             const code = findCode();
             if (code) {
