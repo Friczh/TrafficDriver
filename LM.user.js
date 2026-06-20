@@ -4,60 +4,65 @@
 // @version      1.0.1
 // @description  Automates layma.net traffic tasks
 // @author       user
-// @match        https://layma.net/*
-// @match        https://*/*
-// @grant        GM_setValue
-// @grant        GM_getValue
-// @grant        GM_deleteValue
+// @match        *://*/*
+// @exclude      https://layma.net/*
+// @grant        none
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    // ─── Constants ───────────────────────────────────────────────────────────────
-    const STORAGE_CODE_KEY = 'layma_pending_code';
-    const LOG_PREFIX = '[LaymaHelper]';
-
-    // ─── Utilities ───────────────────────────────────────────────────────────────
-    const log = (msg) => console.log(`${LOG_PREFIX} ${msg}`);
-
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-    const waitFor = (selectorOrFn, timeout = 20000, interval = 300) => new Promise((resolve, reject) => {
-        const check = typeof selectorOrFn === 'function'
-            ? selectorOrFn
-            : () => document.querySelector(selectorOrFn);
-        const found = check();
-        if (found) return resolve(found);
-        const timer = setInterval(() => {
-            const el = check();
-            if (el) { clearInterval(timer); clearTimeout(killer); resolve(el); }
-        }, interval);
-        const killer = setTimeout(() => { clearInterval(timer); reject(new Error(`Timeout: ${selectorOrFn}`)); }, timeout);
-    });
-
-    const humanClick = (el) => {
-        ['mousedown', 'mouseup', 'click'].forEach(type =>
-            el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }))
-        );
-    };
-
-    const triggerTouch = () => {
-        const evt = ('ontouchstart' in document.documentElement)
-            ? new TouchEvent('touchstart', { bubbles: true, cancelable: true })
-            : new MouseEvent('click', { bubbles: true, cancelable: true });
-        window.dispatchEvent(evt);
-    };
-
-    // ─── Traffic key extraction ───────────────────────────────────────────────────
-    // Key is NOT in the external page URL — it's in a <script src="https://layma.net/Traffic/Index/KEY"> tag
     const getTrafficKey = () => {
-        // Check page URL first (layma.net side)
-        const urlMatch = location.pathname.match(/\/Traffic\/Index\/([^/?#]+)/i);
-        if (urlMatch) return urlMatch[1];
-        // Check injected script tag src on external sites
-        const scripts = Array.from(document.querySelectorAll('script[src]'));
+        for (const s of document.querySelectorAll('script[src]')) {
+            const m = s.src.match(/layma\.net\/Traffic\/Index\/([^/?#]+)/i);
+            if (m) return m[1];
+        }
+        return null;
+    };
+
+    const tryClick = (key) => {
+        const btn = document.getElementById(key);
+        if (!btn) return false;
+        btn.click();
+        console.log(`[LaymaExternal] Clicked #${key}`);
+        return true;
+    };
+
+    const run = (key) => {
+        if (tryClick(key)) return;
+
+        // Button not yet in DOM — wait for it
+        const observer = new MutationObserver(() => {
+            if (tryClick(key)) observer.disconnect();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(() => observer.disconnect(), 30000);
+    };
+
+    const init = () => {
+        const key = getTrafficKey();
+        if (key) { run(key); return; }
+
+        // Script tag may load late
+        let found = false;
+        const observer = new MutationObserver(() => {
+            if (found) return;
+            const k = getTrafficKey();
+            if (k) { found = true; observer.disconnect(); run(k); }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        setTimeout(() => observer.disconnect(), 30000);
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+})();
+ Array.from(document.querySelectorAll('script[src]'));
         for (const s of scripts) {
             const m = s.src.match(/layma\.net\/Traffic\/Index\/([^/?#]+)/i);
             if (m) return m[1];
