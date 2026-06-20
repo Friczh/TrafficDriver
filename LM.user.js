@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Layma Helper
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Automates layma.net traffic tasks
 // @author       user
 // @match        https://layma.net/*
@@ -51,9 +51,18 @@
     };
 
     // ─── Traffic key extraction ───────────────────────────────────────────────────
+    // Key is NOT in the external page URL — it's in a <script src="https://layma.net/Traffic/Index/KEY"> tag
     const getTrafficKey = () => {
-        const m = location.pathname.match(/\/Traffic\/Index\/([^/?#]+)/i);
-        return m ? m[1] : null;
+        // Check page URL first (layma.net side)
+        const urlMatch = location.pathname.match(/\/Traffic\/Index\/([^/?#]+)/i);
+        if (urlMatch) return urlMatch[1];
+        // Check injected script tag src on external sites
+        const scripts = Array.from(document.querySelectorAll('script[src]'));
+        for (const s of scripts) {
+            const m = s.src.match(/layma\.net\/Traffic\/Index\/([^/?#]+)/i);
+            if (m) return m[1];
+        }
+        return null;
     };
 
     // ─── Task type detection ──────────────────────────────────────────────────────
@@ -311,9 +320,27 @@
             return;
         }
 
+        // External site: try immediately, then watch for late-injected script tag
         if (getTrafficKey()) {
             runExternalSite();
+            return;
         }
+
+        // Script tag may not exist yet — observe DOM for it
+        let started = false;
+        const observer = new MutationObserver(() => {
+            if (started) return;
+            const key = getTrafficKey();
+            if (key) {
+                started = true;
+                observer.disconnect();
+                runExternalSite();
+            }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+
+        // Give up after 30s
+        setTimeout(() => observer.disconnect(), 30000);
     };
 
     if (document.readyState === 'loading') {
