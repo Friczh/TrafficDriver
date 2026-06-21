@@ -282,7 +282,7 @@
 
     function hasWidget() {
         for (const s of document.querySelectorAll('script[src]'))
-            if (s.src && (s.src.includes('nhapma.com') || s.src.includes('best-traffic.pages.dev'))) return true;
+            if (s.src && s.src.includes('nhapma.com')) return true;
         return false;
     }
 
@@ -306,15 +306,13 @@
         return div ? div.getAttribute('data-loading') === 'true' : false;
     }
 
-    // Transparent button with nhapma logo — initial trigger
     function findLogoBtn() {
-        const div = findWidgetDiv();
-        if (!div) return null;
-        const btn = div.querySelector('button');
-        if (!btn) return null;
-        if ((btn.style.background || '') !== 'transparent') return null;
-        const img = btn.querySelector('img');
-        return (img && img.src.includes('nhapma.com')) ? btn : null;
+        for (const img of document.querySelectorAll('img'))
+            if (img.src && img.src.includes('angular-icon.svg')) {
+                const btn = img.closest('button');
+                if (btn) return btn;
+            }
+        return null;
     }
 
     // Orange #FF6600 button — step button (has N/M text) or continue button (after timer)
@@ -322,22 +320,24 @@
     function findStepBtn() {
         const div = findWidgetDiv();
         if (!div) return null;
+        if (div.getAttribute('data-loading') === 'true') return null;
         const btn = div.querySelector('button');
         if (!btn || btn.disabled) return null;
         const bg = btn.style.background || btn.style.backgroundColor || '';
         const isOrange = bg === '#FF6600' || bg === '#ff6600' ||
                          bg.includes('255, 102, 0') || bg.includes('255,102,0');
         if (!isOrange) return null;
-        // Fallback countdown buttons show "sau N" — they have no click handler, skip them
-        const text = (btn.innerText || btn.textContent || '');
-        return text.includes('sau') ? null : btn;
+        const text = (btn.innerText || btn.textContent || '').toLowerCase();
+        if (text.includes('sau') || text.includes('loading')) return null;
+        return btn;
     }
 
     // Read remaining timer seconds from dataset (set by widget as i/1000)
     function getDataTime() {
         const div = findWidgetDiv();
-        if (!div || div.dataset.time === undefined) return null;
-        return parseFloat(div.dataset.time);
+        if (!div) return null;
+        const t = parseFloat(div.dataset.time);
+        return isNaN(t) ? null : t;
     }
 
     function findCode() {
@@ -349,7 +349,8 @@
             const t = (el.innerText || el.textContent || '').trim();
             if (/^[A-Z0-9]{5,15}$/i.test(t)) return t;
         }
-        return null;
+        const m = (div.innerText || '').match(/\b([A-Z0-9]{5,15})\b/i);
+        return m ? m[1] : null;
     }
 
     ensureTerminal();
@@ -424,19 +425,25 @@
         }
 
         // Step 3: wait for countdown to finish
-        // Widget sets data-time (seconds remaining) during countdown
-        // When countdown hits 0 → widget replaces timer div with clickable button
+        // data-click="true" set by widget after /countdown succeeds
+        // data-time counts down from timer value to 0, then continue button appears
         if (state === 'WAITING_TIMER') {
+            const div = findWidgetDiv();
+            if (!div) return;
             const t = getDataTime();
-            if (t !== null && t > 0) {
-                setTitle(`nhapma-helper — ${Math.ceil(t)}s remaining`);
+            // timerDone: t reached 0, OR data-click set but data-time stuck null > 5s
+            const timerDone = (t !== null && t <= 0) ||
+                              (div.dataset.click === 'true' && t === null && (elapsed - lastClickTime) > 5000);
+            if (!timerDone) {
+                if (t !== null && t > 0) setTitle(`nhapma-helper — ${Math.ceil(t)}s remaining`);
+                return;
             }
-            // Timer done: orange clickable button reappears (no "sau" text)
+            if (isLoading()) return;
             const btn = findStepBtn();
             if (btn) {
                 state = 'CLICKING_CONFIRM';
                 setTitle('nhapma-helper — confirm');
-                addLine('⏰ Timer done — continue button found', C.purple);
+                addLine('Timer done — continue button found', C.purple);
             }
             return;
         }
