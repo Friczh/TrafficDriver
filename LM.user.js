@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NhapMa - UI Helper
 // @namespace    nhapma-helper
-// @version      1.0
+// @version      1.3
 // @description  Semi-auto human-interaction for nhapma.com
 // @author       Friczh
 // @match        *://*/*
