@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NhapMa - UI Helper
 // @namespace    nhapma-helper
-// @version      1.3
+// @version      1.1
 // @description  Semi-auto human-interaction for nhapma.com
 // @author       Friczh
 // @match        *://*/*
@@ -320,15 +320,16 @@
     function findStepBtn() {
         const div = findWidgetDiv();
         if (!div) return null;
+        if (div.getAttribute('data-loading') === 'true') return null;
         const btn = div.querySelector('button');
         if (!btn || btn.disabled) return null;
         const bg = btn.style.background || btn.style.backgroundColor || '';
         const isOrange = bg === '#FF6600' || bg === '#ff6600' ||
                          bg.includes('255, 102, 0') || bg.includes('255,102,0');
         if (!isOrange) return null;
-        // Fallback countdown buttons show "sau N" — they have no click handler, skip them
-        const text = (btn.innerText || btn.textContent || '');
-        return text.includes('sau') ? null : btn;
+        const text = (btn.innerText || btn.textContent || '').toLowerCase();
+        if (text.includes('sau') || text.includes('loading')) return null;
+        return btn;
     }
 
     // Read remaining timer seconds from dataset (set by widget as i/1000)
@@ -426,15 +427,17 @@
         // When countdown hits 0 → widget replaces timer div with clickable button
         if (state === 'WAITING_TIMER') {
             const t = getDataTime();
-            if (t !== null && t > 0) {
-                setTitle(`nhapma-helper — ${Math.ceil(t)}s remaining`);
+            if (t === null || t > 0) {
+                if (t !== null) setTitle(`nhapma-helper — ${Math.ceil(t)}s remaining`);
+                return; // countdown still active or XHR pending
             }
-            // Timer done: orange clickable button reappears (no "sau" text)
+            // t <= 0: countdown done, wait for continue button
+            if (isLoading()) return;
             const btn = findStepBtn();
             if (btn) {
                 state = 'CLICKING_CONFIRM';
                 setTitle('nhapma-helper — confirm');
-                addLine('⏰ Timer done — continue button found', C.purple);
+                addLine('Timer done — continue button found', C.purple);
             }
             return;
         }
