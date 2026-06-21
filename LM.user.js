@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TEST - Click NhapMa Angular Button
 // @namespace    nhapma-test
-// @version      1.0
+// @version      1.1
 // @match        *://*/*
 // @grant        none
 // @run-at       document-idle
@@ -11,11 +11,12 @@
     'use strict';
 
     function findAngularBtn() {
-        const img = document.querySelector('div[data-loading] img[src*="angular-icon.svg"]');
-        if (!img) return null;
-        const btn = img.closest('button');
-        if (!btn) return null;
-        return (btn.style.background === 'transparent') ? btn : null;
+        for (const img of document.querySelectorAll('img'))
+            if (img.src && img.src.includes('angular-icon.svg')) {
+                const btn = img.closest('button');
+                if (btn) return btn;
+            }
+        return null;
     }
 
     let attempts = 0;
