@@ -1,11 +1,8 @@
 // ==UserScript==
-// @name         Layma External
-// @namespace    http://tampermonkey.net/
-// @version      1.0.0
-// @description  Finds layma.net Traffic key and clicks the LẤY MÃ button
-// @author       user
-// @match        https://*/*
-// @exclude      https://layma.net/*
+// @name         TEST - Click NhapMa Angular Button
+// @namespace    nhapma-test
+// @version      1.0
+// @match        *://*/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -13,52 +10,39 @@
 (function () {
     'use strict';
 
-    const getTrafficKey = () => {
-        for (const s of document.querySelectorAll('script[src]')) {
-            const m = s.src.match(/layma\.net\/Traffic\/Index\/([^/?#]+)/i);
-            if (m) return m[1];
-        }
-        return null;
-    };
-
-    const tryClick = (key) => {
-        const btn = document.getElementById(key);
-        if (!btn) return false;
-        btn.click();
-        console.log(`[LaymaExternal] Clicked #${key}`);
-        return true;
-    };
-
-    const run = (key) => {
-        if (tryClick(key)) return;
-
-        // Button not yet in DOM — wait for it
-        const observer = new MutationObserver(() => {
-            if (tryClick(key)) observer.disconnect();
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-        setTimeout(() => observer.disconnect(), 30000);
-    };
-
-    const init = () => {
-        const key = getTrafficKey();
-        if (key) { setTimeout(() => run(key), 5000); return; }
-
-        // Script tag may load late
-        let found = false;
-        const observer = new MutationObserver(() => {
-            if (found) return;
-            const k = getTrafficKey();
-            if (k) { found = true; observer.disconnect(); setTimeout(() => run(k), 5000); }
-        });
-        observer.observe(document.documentElement, { childList: true, subtree: true });
-        setTimeout(() => observer.disconnect(), 30000);
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    function findAngularBtn() {
+        const img = document.querySelector('div[data-loading] img[src*="angular-icon.svg"]');
+        if (!img) return null;
+        const btn = img.closest('button');
+        if (!btn) return null;
+        return (btn.style.background === 'transparent') ? btn : null;
     }
+
+    let attempts = 0;
+    const poll = setInterval(() => {
+        attempts++;
+        console.log('[nhapma-test] polling...', attempts);
+
+        const btn = findAngularBtn();
+        if (btn) {
+            clearInterval(poll);
+            console.log('[nhapma-test] FOUND button:', btn);
+            console.log('[nhapma-test] img src:', btn.querySelector('img')?.src);
+            console.log('[nhapma-test] background:', btn.style.background);
+
+            btn.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
+            btn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            setTimeout(() => {
+                btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                console.log('[nhapma-test] CLICKED');
+            }, 400);
+            return;
+        }
+
+        if (attempts >= 150) {
+            clearInterval(poll);
+            console.warn('[nhapma-test] TIMEOUT — button not found');
+        }
+    }, 800);
 
 })();
